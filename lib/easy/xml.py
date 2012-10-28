@@ -1,6 +1,9 @@
 import itertools
 
 
+_xml_entities = { 'lt': '<', 'gt': '>', 'amp': '&', 'apos': "'", 'quot': '"' }
+
+
 class Node:
 	"""Abstract base class for text and element nodes."""
 
@@ -67,7 +70,7 @@ class TextNode(Node):
 		self.value = value
 
 	def __str__(self):
-		return self.value
+		return self.value.translate({ ord(v): '&%s;' % k for k, v in _xml_entities.items() })
 
 	def _all(self):
 		return [self]
@@ -143,13 +146,13 @@ def node(name, *nodes, **attrs):
 def parse(str):
 	"""Parse a string into an XML document."""
 	from lib.easy.regex import grp, rep, opt, alt, matchone, matchall
-
+	
 	id = '[A-Za-z_][A-Za-z0-9_:-]*'
 	string = alt('"[^"]*"', "'[^']*'")
-
+	
 	ws = r'[\n\r\t ]*'
 	wsr = r'[\n\r\t ]+'
-
+	
 	attr = grp(id, 'name') + ws + '=' + ws + grp(string, 'value')
 	attr_anon = id + ws + '=' + ws + string
 	tag = '<' + ws + grp(id, 'name') + alt(ws, wsr + grp(rep(attr_anon + ws, '+'), 'attrs')) + opt(grp('/', 'end')) + ws + '>'
@@ -157,10 +160,22 @@ def parse(str):
 	tagend = '<' + ws + '/' + ws + grp(id, 'name') + ws + '>'
 	tagend_anon = '<' + ws + '/' + ws + id + ws + '>'
 	declaration = '<[?!][^<>]+>'
-	data = '[^<>]+'
-
+	
+	data_elem = alt(grp('[^<&;]+', 'char'), '&' + grp(rep('[a-z]', '+'), 'name') + ';')
+	data_elem_anon = alt('[^<&;]+', '&' + rep('[a-z]', '+') + ';')
+	data = rep(data_elem_anon, '+')
+	
 	handler = ParseHandler()
-
+	
+	def parse_data(data):
+		def fn(match):
+			if 'char' in match:
+				return match['char']
+			else:
+				return _xml_entities[match['name']]
+		
+		return ''.join(map(fn, matchall(data_elem, data)))
+	
 	for i in matchall(alt(grp(tag_anon, 'tag'), grp(tagend_anon, 'tagend'), grp(data, 'data'), declaration), str):
 		# XML entities and declarations are ignored
 		if 'tag' in i:
@@ -169,7 +184,7 @@ def parse(str):
 
 			if 'attrs' in match:
 				for j in matchall(attr + ws, match['attrs']):
-					attrs[j['name']] = j['value'][1:-1]
+					attrs[j['name']] = parse_data(j['value'][1:-1])
 
 			if 'end' in match:
 				handler.tag(match['name'], attrs)
@@ -178,6 +193,6 @@ def parse(str):
 		elif 'tagend' in i:
 			handler.tag_end(matchone(tagend, i['tagend'])['name'])
 		elif 'data' in i:
-			handler.data(i['data'])
-
+			handler.data(parse_data(i['data']))
+	
 	return handler.result

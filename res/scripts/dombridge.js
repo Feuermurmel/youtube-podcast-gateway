@@ -46,8 +46,9 @@
 		return res
 	}
 	
+	$.dombridge.root = reapDom(document);
+	$.dombridge.loaded = true
+	
 	$(function () {
-		$.dombridge.root = reapDom(document);
-		$.dombridge.loaded = true
 	})
 }) (jQuery)

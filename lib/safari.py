@@ -13,7 +13,6 @@ class ClosingContextManager():
 
 	#noinspection PyUnusedLocal
 	def __exit__(self, exc_type, exc_val, exc_tb):
-	#	pass
 		self.close()
 	
 	def close(self):
@@ -29,7 +28,8 @@ class Browser(ClosingContextManager):
 		return Document(self._app, url)
 	
 	def close(self):
-		self._app.quit()
+		pass
+	#	self._app.quit()
 
 
 class Document(ClosingContextManager):
