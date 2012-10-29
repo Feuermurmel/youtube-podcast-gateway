@@ -10,7 +10,7 @@ class BridgeException(Exception): pass
 class ClosingContextManager():
 	def __enter__(self):
 		return self
-
+	
 	#noinspection PyUnusedLocal
 	def __exit__(self, exc_type, exc_val, exc_tb):
 		self.close()
@@ -46,21 +46,22 @@ class Document(ClosingContextManager):
 	def _create_tab(self):
 		document = self._app.make(new = appscript.k.document)
 		window, = [i for i in appscript.app('Safari').windows.get() if i.document.get() == document] # We need to get at the tab because the the document reference get's invalid as soon as a new page get's loaded.
+		window.visible.set(False)
 		
 		return window.tabs[0].get()
 	
 	def _load_page(self, url):
 		def wait_for(fn):
 			end_time = time.time() + self._timeout
-		
+			
 			while time.time() < end_time:
 				if fn():
 					return
-		
+				
 				time.sleep(.2)
 			
 			raise BridgeException('Timeout while waiting for the page to load.')
-
+		
 		self._tab.URL.set(url)
 		
 		# This should prevent safari from crashing
@@ -83,67 +84,67 @@ class Document(ClosingContextManager):
 	
 	def _to_xml(self, json):
 		"""Convert a DOM serialized in a JSON document into an easyxml DOM"""
-	
+		
 		if 'text' in json:
 			return easy.xml.TextNode(json['text'])
 		else:
 			elem = easy.xml.ElementNode(json['name'], dict(json['attributes']), map(self._to_xml, json['children']))
-	
+			
 			self._handles_by_element[elem] = json['handle']
-	
+			
 			return elem
 	
 	def _run_javascript_raw(self, expr):
 		return self._tab.do_JavaScript(expr)
-
+	
 	def _run_javascript(self, code, **kwargs):
 		"""Run an expression within a function that receives the specified keyword arguments as arguments with that name."""
-	
+		
 		params = ['$']
 		args = ['jQuery']
-	
+		
 		for k, v in kwargs.items():
 			params.append(k)
-	
+			
 			if isinstance(v, easy.xml.ElementNode):
 				args.append('jQuery.dombridge.handles[%s]' % self._handles_by_element[v])
 			else:
 				args.append(json.dumps(v))
-	
+		
 		res = self._run_javascript_raw('jQuery.toJSON((function (%s) { %s }) (%s))' % (', '.join(params), code, ', '.join(args)))
-	
+		
 		if res is None:
 			raise BridgeException('Error while executing JavaScript.')
 		
 		return json.loads(res)
-	
+
 #	def follow_link(self, elem):
 #		"""Follow a link from a single a element within node, also works with links that have an onclick attribute."""
-#		
+#
 #		elem, = elem.walk(name = 'a', attrs = { 'href': None }, root = True)
-#		
+#
 #		href = elem.attributes.get('href')
 #		onclick = elem.attributes.get('onclick')
-#		
+#
 #		# TODO: Check whether we have to build the form in the right document
 #		safari_json("""
 #			var a = $(document.createElement('input')).attr('type', 'submit');
-#			
+#
 #			if (onclick !== null)
 #				a.attr('onclick', onclick);
-#			
+#
 #			if (href !== null)
 #				$('html').append($(document.createElement('form')).attr({ 'action': href, 'method': 'GET' }).append(a));
 #			else
 #				$('html').append(a);
-#			
+#
 #			a.click();""", href = href, onclick = onclick)
-#	
+#
 #	def click_element(self, node):
 #		"""Click onto an element like a button."""
-#		
+#
 #		safari_json("$(h).click()", h = node)
-
+	
 	def close(self):
 		self._tab.close()
 		self._tab = None

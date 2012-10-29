@@ -13,7 +13,7 @@ class URLEncoder:
 	@classmethod
 	def encode(cls, data):
 		return base64.b64encode(data.encode(), cls._altchars).decode()
-
+	
 	@classmethod
 	def decode(cls, data):
 		return base64.b64decode(data.encode(), cls._altchars, True).decode()
@@ -28,9 +28,9 @@ class Downloader:
 		def fn():
 			with urllib.request.urlopen(self._feed_url) as file:
 				data = file.read()
-			
+				
 				dom = easy.xml.parse(data.decode())
-			
+				
 				for i in dom.walk(name = 'entry'):
 					for j in i.walk(name = 'link', attrs = { 'rel': 'alternate', 'type': 'text/html' }):
 						yield j.attrs['href']
@@ -72,14 +72,14 @@ class Video:
 	class File:
 		def __init__(self, page_url):
 			self.page_url = page_url
-
+		
 		def get_download_url(self):
 			with browser.create_document(self.page_url) as doc:
 				player_div = doc.dom.find(lambda x: x.attrs.get('class') in ['CTPmediaPlayer', 'CTPplaceholderContainer'], name = 'div')
-	
+				
 				if player_div.attrs['class'] != 'CTPmediaPlayer':
 					raise NoMpegAvailableError()
-	
+				
 				return doc.dom.find(name = 'video').attrs['src']
 	
 	def __init__(self, title, description, author, published, file : File):
@@ -108,16 +108,16 @@ class Video:
 	def from_feed_entry(cls, node):
 		assert node.name == 'entry'
 		
-		author, = node.find(name = 'author').find(name = 'name').text()
-		published, = node.find(name = 'published').text()
+		author = node.find(name = 'author').find(name = 'name').text()
+		published = node.find(name = 'published').text()
 		published = datetime.datetime.strptime(published, '%Y-%m-%dT%H:%M:%S.%fZ')
 		
 		group_node = node.find(name='media:group')
 		page_url = group_node.find(name = 'media:player').attrs['url']
-		description, = group_node.find(name = 'media:description', attrs = { 'type': 'plain' }).text()
-		title, = group_node.find(name = 'media:title', attrs = { 'type': 'plain' }).text()
+		description = group_node.find(name = 'media:description', attrs = { 'type': 'plain' }).text()
+		title = group_node.find(name = 'media:title', attrs = { 'type': 'plain' }).text()
 		
-		return cls(title, description, author, published, cls.File(page_url))		
+		return cls(title, description, author, published, cls.File(page_url))
 
 
 class Feed:
@@ -142,33 +142,40 @@ class Feed:
 	
 	@classmethod
 	def from_feed_url(cls, feed_url):
-		with urllib.request.urlopen(feed_url) as file:
-			data = file.read()
+		videos = []
+		title = None
+		start_index = 1
+		max_results = 50
 		
-		dom = easy.xml.parse(data.decode())
-		title, = (i for i in dom.nodes if i.name == 'title')
-		title, = title.text()
+		while len(videos) < 500:
+			request_url = '%s?v=%s&max-results=%s&start-index=%s' % (feed_url, 2, max_results, start_index)
+			
+			print('Requesting %s ...' % request_url)
+			
+			with urllib.request.urlopen(request_url) as file:
+				data = file.read()
+			
+			dom = easy.xml.parse(data.decode())
+			
+			if title is None:
+				title, = (i for i in dom.nodes if i.name == 'title')
+				title = title.text()
+			
+			videos_add = [Video.from_feed_entry(i) for i in dom.walk(name = 'entry')]
+			
+			if not videos_add:
+				break
+			
+			videos.extend(videos_add)
+			start_index += len(videos_add)
 		
-		return cls(title, [Video.from_feed_entry(i) for i in dom.walk(name = 'entry')], feed_url)
+		return cls(title, videos, feed_url)
 
-
-# https://developers.google.com/youtube/2.0/developers_guide_protocol_video_feeds#User_Uploaded_Videos
-
-#feed_url = 'https://gdata.youtube.com/feeds/api/users/antvenom/uploads'
-#feed = Feed.from_feed_url(feed_url)
-#
-##print(feed)
-##print(feed.videos[0].page_url)
-#print(feed.make_podcast_feed_elem())
-
-#print(feed.videos[0].get_video_url())
-
-
-#safari.Browser().create_document('http://www.youtube.com/watch?v=AmN0YyaTD60&feature=g-all-u')
 
 class RequestHandler(http.server.SimpleHTTPRequestHandler):
 	def do_HEAD(self):
 		self.send_response(200)
+		self.end_headers()
 	
 	def do_GET(self):
 		assert self.path[0] == '/'
@@ -179,31 +186,22 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 		if path[0] == 'uploads':
 			feed_url = 'http://gdata.youtube.com/feeds/api/users/%s/uploads' % path[1]
 			doc = Feed.from_feed_url(feed_url).make_podcast_feed_elem()
-
+			
 			self.send_response(200)
 			self.send_header('content-type', 'application/atom+xml; charset=utf-8')
 			self.end_headers()
-	
+			
 			self.wfile.write(str(doc).encode())
 		elif path[0] == 'video':
 			file = Video.File(URLEncoder.decode(path[1]))
 			download_url = file.get_download_url()
-
-			with urllib.request.urlopen(download_url) as request:
-				content_length = request.headers.get('content-length')
-				
-				self.send_response(200)
-				self.send_header('content-type', 'video/mp4')
-				
-				if content_length is not None:
-					self.send_header('content-length', content_length)
-				
-				self.end_headers()
 			
-				shutil.copyfileobj(request, self.wfile)
+			self.send_response(302)
+			self.send_header('location', download_url)
+			self.end_headers()
 		else:
 			self.send_response(404)
+			self.end_headers()
 
 
 http.server.HTTPServer(('', server_address[1]), RequestHandler).serve_forever()
-
