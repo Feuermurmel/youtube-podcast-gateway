@@ -1,5 +1,5 @@
-import appscript, urllib.request, time, sys, datetime, base64, http.server
-from lib import safari, easy
+import appscript, urllib.request, time, sys, datetime, base64, http.server, shutil, urllib.request
+from lib import safari, easy, env
 import lib.easy.xml
 
 
@@ -61,7 +61,7 @@ class Downloader:
 			raise RuntimeError('Too much fail!')
 
 
-server_address = ('localhost', 8081)
+server_address = (env.local_address_best_guess(), 8080)
 server_url = 'http://%s:%s' % server_address
 
 
@@ -69,28 +69,32 @@ browser = safari.Browser()
 
 
 class Video:
-	def __init__(self, title, description, author, published, page_url):
+	class File:
+		def __init__(self, page_url):
+			self.page_url = page_url
+
+		def get_download_url(self):
+			with browser.create_document(self.page_url) as doc:
+				player_div = doc.dom.find(lambda x: x.attrs.get('class') in ['CTPmediaPlayer', 'CTPplaceholderContainer'], name = 'div')
+	
+				if player_div.attrs['class'] != 'CTPmediaPlayer':
+					raise NoMpegAvailableError()
+	
+				return doc.dom.find(name = 'video').attrs['src']
+	
+	def __init__(self, title, description, author, published, file : File):
 		self.title = title
 		self.description = description
 		self.author = author
 		self.published = published
-		self.page_url = page_url
+		self.file = file
 	
 	def __repr__(self):
 		return '<Video title = %r, author = %r>' % (self.title, self.author)
 	
-	def get_video_url(self):
-		with browser.create_document(self.page_url) as doc:
-			player_div = doc.dom.find(lambda x: x.attrs.get('class') in ['CTPmediaPlayer', 'CTPplaceholderContainer'], name = 'div')
-			
-			if player_div.attrs['class'] != 'CTPmediaPlayer':
-				raise NoMpegAvailableError()
-			
-			return doc.dom.find(name = 'video').attrs['src']
-	
 	def make_podcast_entry_elem(self):
 		n = lib.easy.xml.node
-		encoded_page_url = '%s/video/%s.m4v' % (server_url, URLEncoder.encode(self.page_url)) # Extension is needed so that iTunes recognizes the enclosure a media file (or something, it doesn't work otherwise).
+		encoded_page_url = '%s/video/%s.m4v' % (server_url, URLEncoder.encode(self.file.page_url)) # Extension is needed so that iTunes recognizes the enclosure a media file (or something, it doesn't work otherwise).
 		
 		return n(
 			'entry',
@@ -113,7 +117,7 @@ class Video:
 		description, = group_node.find(name = 'media:description', attrs = { 'type': 'plain' }).text()
 		title, = group_node.find(name = 'media:title', attrs = { 'type': 'plain' }).text()
 		
-		return cls(title, description, author, published, page_url)		
+		return cls(title, description, author, published, cls.File(page_url))		
 
 
 class Feed:
@@ -163,15 +167,17 @@ class Feed:
 #safari.Browser().create_document('http://www.youtube.com/watch?v=AmN0YyaTD60&feature=g-all-u')
 
 class RequestHandler(http.server.SimpleHTTPRequestHandler):
+	def do_HEAD(self):
+		self.send_response(200)
+	
 	def do_GET(self):
 		assert self.path[0] == '/'
 		
 		path = self.path[1:].split('/')
-		path[-1], _ = path[-1].rsplit('.', 1) # Allow flexibility in URLs by ignoring any file name extensions
+		path[-1] = path[-1].rsplit('.', 1)[0] # Allow flexibility in URLs by ignoring any file name extensions
 		
 		if path[0] == 'uploads':
 			feed_url = 'http://gdata.youtube.com/feeds/api/users/%s/uploads' % path[1]
-
 			doc = Feed.from_feed_url(feed_url).make_podcast_feed_elem()
 
 			self.send_response(200)
@@ -180,16 +186,21 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 	
 			self.wfile.write(str(doc).encode())
 		elif path[0] == 'video':
-			video_page_url = URLEncoder.decode(path[1])
+			file = Video.File(URLEncoder.decode(path[1]))
+			download_url = file.get_download_url()
+
+			with urllib.request.urlopen(download_url) as request:
+				content_length = request.headers.get('content-length')
+				
+				self.send_response(200)
+				self.send_header('content-type', 'video/mp4')
+				
+				if content_length is not None:
+					self.send_header('content-length', content_length)
+				
+				self.end_headers()
 			
-			print(video_page_url)
-			
-			self.send_response(200)
-			self.send_header('content-type', 'video/mp4')
-			self.end_headers()
-			
-			with open('rss/Badday.m4v', 'rb') as file:
-				self.wfile.write(file.read())
+				shutil.copyfileobj(request, self.wfile)
 		else:
 			self.send_response(404)
 

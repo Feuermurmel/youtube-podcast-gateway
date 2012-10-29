@@ -22,7 +22,7 @@ class ClosingContextManager():
 class Browser(ClosingContextManager):
 	def __init__(self):
 		self._app = appscript.app('Safari')
-		self._app.close(self._app.windows) # Also launches the application
+	#	self._app.close(self._app.windows) # Also launches the application
 	
 	def create_document(self, url):
 		return Document(self._app, url)

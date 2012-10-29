@@ -161,8 +161,8 @@ def parse(str):
 	tagend_anon = '<' + ws + '/' + ws + id + ws + '>'
 	declaration = '<[?!][^<>]+>'
 	
-	data_elem = alt(grp('[^<&;]+', 'char'), '&' + grp(rep('[a-z]', '+'), 'name') + ';')
-	data_elem_anon = alt('[^<&;]+', '&' + rep('[a-z]', '+') + ';')
+	data_elem = alt(grp('[^<&]+', 'char'), '&' + grp(rep('[a-z]', '+'), 'name') + ';')
+	data_elem_anon = alt('[^<&]+', '&' + rep('[a-z]', '+') + ';')
 	data = rep(data_elem_anon, '+')
 	
 	handler = ParseHandler()
