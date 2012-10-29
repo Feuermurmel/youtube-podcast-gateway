@@ -183,8 +183,10 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 		path = self.path[1:].split('/')
 		path[-1] = path[-1].rsplit('.', 1)[0] # Allow flexibility in URLs by ignoring any file name extensions
 		
-		if path[0] == 'uploads':
-			feed_url = 'http://gdata.youtube.com/feeds/api/users/%s/uploads' % path[1]
+		feed_for_type = { 'uploads': 'users/%s/uploads', 'playlist': 'playlists/%s' }
+		
+		if path[0] in feed_for_type:
+			feed_url = 'http://gdata.youtube.com/feeds/api/%s' % (feed_for_type[path[0]] % path[1])
 			doc = Feed.from_feed_url(feed_url).make_podcast_feed_elem()
 			
 			self.send_response(200)
