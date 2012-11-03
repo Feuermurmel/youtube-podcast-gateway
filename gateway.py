@@ -1,4 +1,4 @@
-import appscript, urllib.request, time, sys, datetime, base64, http.server, shutil, urllib.request
+import appscript, urllib.request, time, sys, datetime, base64, socketserver, http.server, shutil, urllib.request
 from lib import safari, easy, env
 import lib.easy.xml
 
@@ -61,20 +61,13 @@ class Downloader:
 			raise RuntimeError('Too much fail!')
 
 
-server_address = (env.local_address_best_guess(), 8080)
-server_url = 'http://%s:%s' % server_address
-
-
-browser = safari.Browser()
-
-
 class Video:
 	class File:
 		def __init__(self, page_url):
 			self.page_url = page_url
 		
-		def get_download_url(self):
-			with browser.create_document(self.page_url) as doc:
+		def get_download_url(self, gateway):
+			with gateway.browser.create_document(self.page_url) as doc:
 				player_div = doc.dom.find(lambda x: x.attrs.get('class') in ['CTPmediaPlayer', 'CTPplaceholderContainer'], name = 'div')
 				
 				if player_div.attrs['class'] != 'CTPmediaPlayer':
@@ -92,9 +85,9 @@ class Video:
 	def __repr__(self):
 		return '<Video title = %r, author = %r>' % (self.title, self.author)
 	
-	def make_podcast_entry_elem(self):
+	def make_podcast_entry_elem(self, gateway):
 		n = lib.easy.xml.node
-		encoded_page_url = '%s/video/%s.m4v' % (server_url, URLEncoder.encode(self.file.page_url)) # Extension is needed so that iTunes recognizes the enclosure a media file (or something, it doesn't work otherwise).
+		encoded_page_url = '%s/video/%s.m4v' % (gateway.server_url, URLEncoder.encode(self.file.page_url)) # Extension is needed so that iTunes recognizes the enclosure a media file (or something, it doesn't work otherwise).
 		
 		return n(
 			'entry',
@@ -129,26 +122,27 @@ class Feed:
 	def __repr__(self):
 		return '<Feed videos = %s>' % self.videos
 	
-	def make_podcast_feed_elem(self):
-		n = lib.easy.xml.node
-		encoded_feed_url = '%s/%s' % (server_url, URLEncoder.encode(self.feed_url))
+	def make_podcast_feed_elem(self, gateway):
+		from lib.easy.xml import node as n
+		
+		encoded_feed_url = '%s/%s' % (gateway.server_url, URLEncoder.encode(self.feed_url))
 		
 		return n(
 			'feed',
 			n('id', encoded_feed_url),
 			n('title', self.title),
-			*[i.make_podcast_entry_elem() for i in self.videos],
-			xmlns = 'http://www.w3.org/2005/Atom')
+			*[i.make_podcast_entry_elem(gateway) for i in self.videos],
+			xmlns = 'http://www.w3.org/2005/Atom',
+			xmlns__itunes = 'http://www.itunes.com/dtds/podcast-1.0.dtd')
 	
 	@classmethod
 	def from_feed_url(cls, feed_url):
 		videos = []
 		title = None
-		start_index = 1
 		max_results = 50
 		
 		while len(videos) < 500:
-			request_url = '%s?v=%s&max-results=%s&start-index=%s' % (feed_url, 2, max_results, start_index)
+			request_url = '%s?v=%s&max-results=%s&start-index=%s' % (feed_url, 2, max_results, len(videos) + 1)
 			
 			print('Requesting %s ...' % request_url)
 			
@@ -167,43 +161,65 @@ class Feed:
 				break
 			
 			videos.extend(videos_add)
-			start_index += len(videos_add)
 		
 		return cls(title, videos, feed_url)
 
 
 class RequestHandler(http.server.SimpleHTTPRequestHandler):
-	def do_HEAD(self):
-		self.send_response(200)
-		self.end_headers()
+#	def do_HEAD(self):
+#		self.send_response(200)
+#		self.end_headers()
 	
 	def do_GET(self):
 		assert self.path[0] == '/'
 		
-		path = self.path[1:].split('/')
-		path[-1] = path[-1].rsplit('.', 1)[0] # Allow flexibility in URLs by ignoring any file name extensions
+		print('GET', self.path)
+		print(self.headers)
 		
-		feed_for_type = { 'uploads': 'users/%s/uploads', 'playlist': 'playlists/%s' }
-		
-		if path[0] in feed_for_type:
-			feed_url = 'http://gdata.youtube.com/feeds/api/%s' % (feed_for_type[path[0]] % path[1])
-			doc = Feed.from_feed_url(feed_url).make_podcast_feed_elem()
-			
-			self.send_response(200)
-			self.send_header('content-type', 'application/atom+xml; charset=utf-8')
-			self.end_headers()
-			
-			self.wfile.write(str(doc).encode())
-		elif path[0] == 'video':
-			file = Video.File(URLEncoder.decode(path[1]))
-			download_url = file.get_download_url()
-			
-			self.send_response(302)
-			self.send_header('location', download_url)
+		if self.headers['host'] != self.server.host_port:
+			self.send_response(301)
+			self.send_header('location', self.server.server_url + self.path)
 			self.end_headers()
 		else:
-			self.send_response(404)
-			self.end_headers()
+			path = self.path[1:].split('/')
+			path[-1] = path[-1].rsplit('.', 1)[0] # Allow flexibility in URLs by ignoring any file name extensions
+			
+			feed_for_type = { 'uploads': 'users/%s/uploads', 'playlist': 'playlists/%s' }
+			
+			if path[0] in feed_for_type:
+				feed_url = 'http://gdata.youtube.com/feeds/api/%s' % (feed_for_type[path[0]] % path[1])
+				doc = Feed.from_feed_url(feed_url).make_podcast_feed_elem(self.server)
+				
+				self.send_response(200)
+				self.send_header('content-type', 'application/atom+xml; charset=utf-8')
+				self.end_headers()
+				
+				self.wfile.write(str(doc).encode())
+			elif path[0] == 'video':
+				file = Video.File(URLEncoder.decode(path[1]))
+				download_url = file.get_download_url(self.server)
+				
+				with urllib.request.urlopen(download_url) as request:
+					content_length = request.headers.get('content-length')
+					
+					self.send_response(200)
+					self.send_header('content-type', request.headers.get('content-type'))
+					self.send_header('content-length', request.headers.get('content-length'))
+					self.end_headers()
+					
+					shutil.copyfileobj(request, self.wfile)
+			else:
+				self.send_response(404)
+				self.end_headers()
 
 
-http.server.HTTPServer(('', server_address[1]), RequestHandler).serve_forever()
+class Gateway(socketserver.ThreadingMixIn, http.server.HTTPServer):
+	def __init__(self, port = 8080, server_address = None):
+		if server_address is None:
+			server_address = env.local_address_best_guess()
+		
+		super().__init__(('', port), RequestHandler)
+		
+		self.host_port = '%s:%s' % (server_address, 8080)
+		self.server_url = 'http://%s' % self.host_port
+		self.browser = safari.Browser()
