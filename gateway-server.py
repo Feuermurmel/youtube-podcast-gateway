@@ -172,9 +172,9 @@ class Feed:
 
 
 class RequestHandler(http.server.SimpleHTTPRequestHandler):
-	def do_HEAD(self):
-		self.send_response(200)
-		self.end_headers()
+#	def do_HEAD(self):
+#		self.send_response(200)
+#		self.end_headers()
 	
 	def do_GET(self):
 		assert self.path[0] == '/'
