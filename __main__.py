@@ -1,4 +1,4 @@
 import gateway
 
 
-gateway.Gateway(server_address = 'velo.local').serve_forever()
+gateway.Gateway(server_address = 'feuermurmel.ch').serve_forever()

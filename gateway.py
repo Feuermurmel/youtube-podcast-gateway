@@ -93,7 +93,7 @@ class Video:
 			'entry',
 			n('title', self.title),
 			n('link', rel = 'enclosure', href = encoded_page_url),
-			n('id', encoded_page_url),
+			n('id', self.file.page_url),
 			n('published', self.published.isoformat() + 'Z'),
 			n('content', self.description))
 	
@@ -123,13 +123,11 @@ class Feed:
 		return '<Feed videos = %s>' % self.videos
 	
 	def make_podcast_feed_elem(self, gateway):
-		from lib.easy.xml import node as n
-		
-		encoded_feed_url = '%s/%s' % (gateway.server_url, URLEncoder.encode(self.feed_url))
+		n = lib.easy.xml.node
 		
 		return n(
 			'feed',
-			n('id', encoded_feed_url),
+			n('id', self.feed_url),
 			n('title', self.title),
 			*[i.make_podcast_entry_elem(gateway) for i in self.videos],
 			xmlns = 'http://www.w3.org/2005/Atom',
