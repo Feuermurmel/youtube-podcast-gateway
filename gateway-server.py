@@ -198,12 +198,22 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 			file = Video.File(URLEncoder.decode(path[1]))
 			download_url = file.get_download_url()
 			
-			self.send_response(302)
-			self.send_header('location', download_url)
-			self.end_headers()
+			with urllib.request.urlopen(download_url) as request:
+				content_length = request.headers.get('content-length')
+				
+				self.send_response(200)
+				self.send_header('content-type', request.headers.get('content-type'))
+				self.send_header('content-length', request.headers.get('content-length'))
+				self.end_headers()
+				
+				shutil.copyfileobj(request, self.wfile)
 		else:
 			self.send_response(404)
 			self.end_headers()
 
 
-http.server.HTTPServer(('', server_address[1]), RequestHandler).serve_forever()
+class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
+	pass
+
+
+Server(('', server_address[1]), RequestHandler).serve_forever()
