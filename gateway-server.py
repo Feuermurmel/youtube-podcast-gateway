@@ -61,7 +61,7 @@ class Downloader:
 			raise RuntimeError('Too much fail!')
 
 
-server_address = (env.local_address_best_guess(), 8080)
+server_address = 'feuermurmel.ch', 8080
 server_url = 'http://%s:%s' % server_address
 
 
