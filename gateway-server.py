@@ -1,4 +1,4 @@
-import appscript, urllib.request, time, sys, datetime, base64, http.server, shutil, urllib.request
+import appscript, urllib.request, time, sys, datetime, base64, socketserver, http.server, shutil, urllib.request
 from lib import safari, easy, env
 import lib.easy.xml
 
@@ -100,7 +100,7 @@ class Video:
 			'entry',
 			n('title', self.title),
 			n('link', rel = 'enclosure', href = encoded_page_url),
-			n('id', encoded_page_url),
+			n('id', self.file.page_url),
 			n('published', self.published.isoformat() + 'Z'),
 			n('content', self.description))
 	
@@ -131,11 +131,10 @@ class Feed:
 	
 	def make_podcast_feed_elem(self):
 		n = lib.easy.xml.node
-		encoded_feed_url = '%s/%s' % (server_url, URLEncoder.encode(self.feed_url))
 		
 		return n(
 			'feed',
-			n('id', encoded_feed_url),
+			n('id', self.feed_url),
 			n('title', self.title),
 			*[i.make_podcast_entry_elem() for i in self.videos],
 			xmlns = 'http://www.w3.org/2005/Atom')
