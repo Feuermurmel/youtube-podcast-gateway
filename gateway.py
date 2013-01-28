@@ -67,20 +67,33 @@ class Video:
 			self.gateway = gateway
 			self.page_url = page_url
 			self._download_url = None
+			self._download_url_time = None
 		
 		def _get_download_url(self):
-			with self.gateway.browser.create_document(self.page_url) as doc:
-				player_div = doc.dom.find(lambda x: x.attrs.get('class') in ['CTPmediaPlayer', 'CTPplaceholderContainer'], name = 'div')
-				
-				if player_div.attrs['class'] != 'CTPmediaPlayer':
-					raise NoMpegAvailableError()
-				
-				return doc.dom.find(name = 'video').attrs['src']
+			last_exception = None
+			
+			# Try five times if BridgeException is raised, if it still failse, re-raise the last exception.
+			for i in range(5):
+				try:
+					with self.gateway.browser.create_document(self.page_url) as doc:
+						player_div = doc.dom.find(lambda x: x.attrs.get('class') in ['CTPmediaPlayer', 'CTPplaceholderContainer'], name = 'div')
+						
+						if player_div.attrs['class'] != 'CTPmediaPlayer':
+							raise NoMpegAvailableError()
+						
+						return doc.dom.find(name = 'video').attrs['src']
+				except safari.BridgeException as e:
+					last_exception = e
+			
+			raise last_exception
 		
 		@property
 		def download_url(self):
-			if self._download_url is None:
+			now = datetime.datetime.now()
+			
+			if self._download_url is None or now - self._download_url_time > datetime.timedelta(minutes = 10):
 				self._download_url = self._get_download_url()
+				self._download_url_time = now
 			
 			return self._download_url
 	
@@ -220,9 +233,17 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 class FileFactory:
 	def __init__(self, gateway):
 		self.gateway = gateway
+		self._files_by_url = { } # map from url as string to File instance
 	
 	def get_file(self, page_url):
-		return Video.File(self.gateway, page_url)
+		file = self._files_by_url.get(page_url)
+		
+		if file is None:
+			file = Video.File(self.gateway, page_url)
+			
+			self._files_by_url[page_url] = file
+		
+		return file
 
 
 class Gateway(socketserver.ThreadingMixIn, http.server.HTTPServer):
