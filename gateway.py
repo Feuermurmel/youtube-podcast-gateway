@@ -1,4 +1,4 @@
-import appscript, urllib.request, time, sys, datetime, base64, socketserver, http.server, shutil, urllib.request
+import appscript, urllib.request, time, sys, datetime, base64, socketserver, http.server, shutil, urllib.request, email
 from lib import safari, easy, env
 import lib.easy.xml
 
@@ -90,12 +90,12 @@ class Video:
 		encoded_page_url = '%s/video/%s.m4v' % (gateway.server_url, URLEncoder.encode(self.file.page_url)) # Extension is needed so that iTunes recognizes the enclosure a media file (or something, it doesn't work otherwise).
 		
 		return n(
-			'entry',
+			'item',
 			n('title', self.title),
-			n('link', rel = 'enclosure', href = encoded_page_url),
-			n('id', self.file.page_url),
-			n('published', self.published.isoformat() + 'Z'),
-			n('content', self.description))
+			n('itunes__summary', self.description),
+			n('pubDate', email.utils.formatdate((self.published - datetime.datetime(1970, 1, 1)) / datetime.timedelta(seconds = 1))),
+			n('guid', self.file.page_url),
+			n('enclosure', url = encoded_page_url))
 	
 	@classmethod
 	def from_feed_entry(cls, node):
@@ -126,12 +126,11 @@ class Feed:
 		n = lib.easy.xml.node
 		
 		return n(
-			'feed',
-			n('id', self.feed_url),
+			'rss',
 			n('title', self.title),
 			*[i.make_podcast_entry_elem(gateway) for i in self.videos],
-			xmlns = 'http://www.w3.org/2005/Atom',
-			xmlns__itunes = 'http://www.itunes.com/dtds/podcast-1.0.dtd')
+			xmlns__itunes = 'http://www.itunes.com/dtds/podcast-1.0.dtd',
+			version = '2.0')
 	
 	@classmethod
 	def from_feed_url(cls, feed_url):
@@ -221,3 +220,8 @@ class Gateway(socketserver.ThreadingMixIn, http.server.HTTPServer):
 		self.host_port = '%s:%s' % (server_address, 8080)
 		self.server_url = 'http://%s' % self.host_port
 		self.browser = safari.Browser()
+	
+	def serve_forever(self):
+		print('Listening on {} ...'.format(self.host_port))
+		
+		super().serve_forever()
