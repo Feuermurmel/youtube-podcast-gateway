@@ -63,10 +63,12 @@ class Downloader:
 
 class Video:
 	class File:
-		def __init__(self, page_url):
+		def __init__(self, gateway, page_url):
+			self.gateway = gateway
 			self.page_url = page_url
+			self._download_url = None
 		
-		def get_download_url(self, gateway):
+		def _get_download_url(self, gateway):
 			with gateway.browser.create_document(self.page_url) as doc:
 				player_div = doc.dom.find(lambda x: x.attrs.get('class') in ['CTPmediaPlayer', 'CTPplaceholderContainer'], name = 'div')
 				
@@ -74,6 +76,13 @@ class Video:
 					raise NoMpegAvailableError()
 				
 				return doc.dom.find(name = 'video').attrs['src']
+		
+		@property
+		def download_url(self):
+			if self._download_url is None:
+				self._download_url = self._get_download_url(self.gateway)
+			
+			return self._download_url
 	
 	def __init__(self, title, description, author, published, file : File):
 		self.title = title
@@ -87,18 +96,20 @@ class Video:
 	
 	def make_podcast_entry_elem(self, gateway):
 		n = lib.easy.xml.node
-		encoded_page_url = '%s/video/%s.m4v' % (gateway.server_url, URLEncoder.encode(self.file.page_url)) # Extension is needed so that iTunes recognizes the enclosure a media file (or something, it doesn't work otherwise).
+		encoded_page_url = '%s/video/%s.m4v' % (gateway.server_url, URLEncoder.encode(self.file.page_url)) # Extension is needed so that iTunes recognizes the enclosure as a media file (or something, it doesn't work otherwise).
+		published = email.utils.formatdate((self.published - datetime.datetime(
+			1970, 1, 1)) / datetime.timedelta(seconds=1))
 		
 		return n(
 			'item',
 			n('title', self.title),
 			n('itunes__summary', self.description),
-			n('pubDate', email.utils.formatdate((self.published - datetime.datetime(1970, 1, 1)) / datetime.timedelta(seconds = 1))),
+			n('pubDate', published),
 			n('guid', self.file.page_url),
 			n('enclosure', url = encoded_page_url))
 	
 	@classmethod
-	def from_feed_entry(cls, node):
+	def from_feed_entry(cls, gateway, node):
 		assert node.name == 'entry'
 		
 		author = node.find(name = 'author').find(name = 'name').text()
@@ -110,7 +121,7 @@ class Video:
 		description = group_node.find(name = 'media:description', attrs = { 'type': 'plain' }).text()
 		title = group_node.find(name = 'media:title', attrs = { 'type': 'plain' }).text()
 		
-		return cls(title, description, author, published, cls.File(page_url))
+		return cls(title, description, author, published, cls.File(gateway, page_url))
 
 
 class Feed:
@@ -133,7 +144,7 @@ class Feed:
 			version = '2.0')
 	
 	@classmethod
-	def from_feed_url(cls, feed_url):
+	def from_feed_url(cls, gateway, feed_url):
 		videos = []
 		title = None
 		max_results = 50
@@ -152,7 +163,7 @@ class Feed:
 				title, = (i for i in dom.nodes if i.name == 'title')
 				title = title.text()
 			
-			videos_add = [Video.from_feed_entry(i) for i in dom.walk(name = 'entry')]
+			videos_add = [Video.from_feed_entry(gateway, i) for i in dom.walk(name = 'entry')]
 			
 			if not videos_add:
 				break
@@ -163,9 +174,7 @@ class Feed:
 
 
 class RequestHandler(http.server.SimpleHTTPRequestHandler):
-#	def do_HEAD(self):
-#		self.send_response(200)
-#		self.end_headers()
+	gateway = None
 	
 	def do_GET(self):
 		assert self.path[0] == '/'
@@ -185,7 +194,7 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 			
 			if path[0] in feed_for_type:
 				feed_url = 'http://gdata.youtube.com/feeds/api/%s' % (feed_for_type[path[0]] % path[1])
-				doc = Feed.from_feed_url(feed_url).make_podcast_feed_elem(self.server)
+				doc = Feed.from_feed_url(self.gateway, feed_url).make_podcast_feed_elem(self.server)
 				
 				self.send_response(200)
 				self.send_header('content-type', 'application/atom+xml; charset=utf-8')
@@ -193,12 +202,10 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 				
 				self.wfile.write(str(doc).encode())
 			elif path[0] == 'video':
-				file = Video.File(URLEncoder.decode(path[1]))
-				download_url = file.get_download_url(self.server)
+				file = Video.File(self.gateway, URLEncoder.decode(path[1]))
+				download_url = file.download_url
 				
 				with urllib.request.urlopen(download_url) as request:
-					content_length = request.headers.get('content-length')
-					
 					self.send_response(200)
 					self.send_header('content-type', request.headers.get('content-type'))
 					self.send_header('content-length', request.headers.get('content-length'))
@@ -215,7 +222,10 @@ class Gateway(socketserver.ThreadingMixIn, http.server.HTTPServer):
 		if server_address is None:
 			server_address = env.local_address_best_guess()
 		
-		super().__init__(('', port), RequestHandler)
+		class RequestHandler_(RequestHandler):
+			gateway = self
+		
+		super().__init__(('', port), RequestHandler_)
 		
 		self.host_port = '%s:%s' % (server_address, 8080)
 		self.server_url = 'http://%s' % self.host_port
