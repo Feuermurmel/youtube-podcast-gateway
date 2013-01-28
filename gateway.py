@@ -139,7 +139,7 @@ class Feed:
 		title = None
 		max_results = 50
 		
-		while len(videos) < 500:
+		while len(videos) < 1000:
 			request_url = '%s?v=%s&max-results=%s&start-index=%s' % (feed_url, 2, max_results, len(videos) + 1)
 			
 			print('Requesting %s ...' % request_url)
