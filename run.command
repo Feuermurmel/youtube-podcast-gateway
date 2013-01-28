@@ -2,4 +2,4 @@
 
 cd "$(dirname "$BASH_SOURCE")"
 
-python3.2 gateway-server.py
+python3.2 .
