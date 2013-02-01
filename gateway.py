@@ -193,9 +193,6 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 	def do_GET(self):
 		assert self.path[0] == '/'
 		
-		print('GET', self.path)
-		print(self.headers)
-		
 		if self.headers['host'] != self.server.host_port:
 			self.send_response(301)
 			self.send_header('location', self.server.server_url + self.path)
@@ -218,14 +215,22 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 			elif path[0] == 'video':
 				file = self.file_factory.get_file(URLEncoder.decode(path[1]))
 				download_url = file.download_url
+				request = urllib.request.Request(download_url)
 				
-				with urllib.request.urlopen(download_url) as request:
+				for i in ['Range']:
+					if i in self.headers:
+						request.add_header(i, self.headers[i])
+				
+				with urllib.request.urlopen(request) as response:
 					self.send_response(200)
-					self.send_header('content-type', request.headers.get('content-type'))
-					self.send_header('content-length', request.headers.get('content-length'))
+					
+					for i in ['Content-Type', 'Content-Length', 'Content-Range', 'Accept-Ranges']:
+						if i in response.headers:
+							self.send_header(i, response.headers[i])
+					
 					self.end_headers()
 					
-					shutil.copyfileobj(request, self.wfile)
+					shutil.copyfileobj(response, self.wfile)
 			else:
 				self.send_response(404)
 				self.end_headers()
