@@ -1,5 +1,5 @@
-import appscript, urllib.request, time, sys, datetime, base64, socketserver, http.server, shutil, urllib.request, email
-from lib import safari, easy, env
+import urllib.request, time, sys, datetime, base64, socketserver, http.server, shutil, email, subprocess
+from lib import easy, env
 import lib.easy.xml
 
 
@@ -19,48 +19,6 @@ class URLEncoder:
 		return base64.b64decode(data.encode(), cls._altchars, True).decode()
 
 
-class Downloader:
-	def __init__(self, browser, feed_url):
-		self._browser = browser
-		self._feed_url = feed_url
-	
-	def get_video_page_urls(self):
-		def fn():
-			with urllib.request.urlopen(self._feed_url) as file:
-				data = file.read()
-				
-				dom = easy.xml.parse(data.decode())
-				
-				for i in dom.walk(name = 'entry'):
-					for j in i.walk(name = 'link', attrs = { 'rel': 'alternate', 'type': 'text/html' }):
-						yield j.attrs['href']
-		
-		return list(fn())
-	
-	def get_video_url(self, page_url):
-		timeout = 0
-		
-		for i in range(10):
-			try:
-				with self._browser.create_document(page_url) as doc:
-					player_div = doc.dom.find(lambda x: x.attrs.get('class') in ['CTPmediaPlayer', 'CTPplaceholderContainer'], name = 'div')
-					
-					if player_div.attrs['class'] != 'CTPmediaPlayer':
-						raise NoMpegAvailableError()
-					
-					return doc.dom.find(name = 'video').attrs['src']
-			except appscript.reference.CommandError:
-				timeout += 2
-				
-				print('Safari crashed, retrying in %s seconds ...' % timeout, file = sys.stderr)
-				
-				time.sleep(timeout)
-			except ( ):
-				print('Page not loaded correctly, retrying ...', file = sys.stderr)
-		else:
-			raise RuntimeError('Too much fail!')
-
-
 class Video:
 	class File:
 		def __init__(self, gateway, page_url):
@@ -70,22 +28,23 @@ class Video:
 			self._download_url_time = None
 		
 		def _get_download_url(self):
-			last_exception = None
+			formats = [22, 18, 17]
 			
-			# Try five times if BridgeException is raised, if it still failse, re-raise the last exception.
-			for i in range(5):
-				try:
-					with self.gateway.browser.create_document(self.page_url) as doc:
-						player_div = doc.dom.find(lambda x: x.attrs.get('class') in ['CTPmediaPlayer', 'CTPplaceholderContainer'], name = 'div')
-						
-						if player_div.attrs['class'] != 'CTPmediaPlayer':
-							raise NoMpegAvailableError()
-						
-						return doc.dom.find(name = 'video').attrs['src']
-				except safari.BridgeException as e:
-					last_exception = e
+			for i in formats:
+				proc = subprocess.Popen(['youtube-dl', '-g', '-f', str(i), self.page_url], stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+				stdout, stderr = proc.communicate()
+				
+				if proc.returncode:
+					message = stderr.decode().strip()
+					
+					if message == 'ERROR: requested format not available':
+						continue
+					else:
+						raise Exception('Getting the download URL failed: {}'.format(message))
+				
+				return stdout.decode().strip()
 			
-			raise last_exception
+			raise Exception('None of the requested formats are available.')
 		
 		@property
 		def download_url(self):
@@ -259,7 +218,6 @@ class Gateway(socketserver.ThreadingMixIn, http.server.HTTPServer):
 		
 		self.host_port = '%s:%s' % (server_address, 8080)
 		self.server_url = 'http://%s' % self.host_port
-		self.browser = safari.Browser()
 		
 		class RequestHandler_(RequestHandler):
 			file_factory = FileFactory(self)
