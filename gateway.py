@@ -55,7 +55,7 @@ class Downloader:
 				print('Safari crashed, retrying in %s seconds ...' % timeout, file = sys.stderr)
 				
 				time.sleep(timeout)
-			except ( ):
+			except:
 				print('Page not loaded correctly, retrying ...', file = sys.stderr)
 		else:
 			raise RuntimeError('Too much fail!')
@@ -166,7 +166,7 @@ class Feed:
 		while len(videos) < 1000:
 			request_url = '%s?v=%s&max-results=%s&start-index=%s' % (feed_url, 2, max_results, len(videos) + 1)
 			
-			print('Requesting %s ...' % request_url)
+			print('Requesting %s ...' % request_url, file = sys.stderr)
 			
 			with urllib.request.urlopen(request_url) as file:
 				data = file.read()
@@ -267,6 +267,6 @@ class Gateway(socketserver.ThreadingMixIn, http.server.HTTPServer):
 		super().__init__(('', port), RequestHandler_)
 	
 	def serve_forever(self):
-		print('Listening on {} ...'.format(self.host_port))
+		print('Listening on {} ...'.format(self.host_port), file = sys.stderr)
 		
 		super().serve_forever()
