@@ -1,29 +1,13 @@
-import urllib.request, time, sys, datetime, base64, socketserver, http.server, shutil, email, subprocess
+import urllib.request, time, sys, datetime, socketserver, http.server, shutil, email, subprocess, socket
 from lib import easy, env
 import lib.easy.xml
 
 
-class NoMpegAvailableError(Exception):
-	pass
-
-
-class URLEncoder:
-	_altchars = b'_-'
-	
-	@classmethod
-	def encode(cls, data):
-		return base64.b64encode(data.encode(), cls._altchars).decode()
-	
-	@classmethod
-	def decode(cls, data):
-		return base64.b64decode(data.encode(), cls._altchars, True).decode()
-
-
 class Video:
 	class File:
-		def __init__(self, gateway, page_url):
+		def __init__(self, gateway, video_id):
 			self.gateway = gateway
-			self.page_url = page_url
+			self.video_id = video_id
 			self._download_url = None
 			self._download_url_time = None
 		
@@ -31,7 +15,7 @@ class Video:
 			formats = [22, 18, 17]
 			
 			for i in formats:
-				proc = subprocess.Popen(['youtube-dl', '-g', '-f', str(i), self.page_url], stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+				proc = subprocess.Popen(['youtube-dl', '-g', '-f', str(i), 'http://www.youtube.com/watch?v={}'.format(self.video_id)], stdout = subprocess.PIPE, stderr = subprocess.PIPE)
 				stdout, stderr = proc.communicate()
 				
 				if proc.returncode:
@@ -68,7 +52,7 @@ class Video:
 	
 	def make_podcast_entry_elem(self, gateway):
 		n = lib.easy.xml.node
-		encoded_page_url = '%s/video/%s.m4v' % (gateway.server_url, URLEncoder.encode(self.file.page_url)) # Extension is needed so that iTunes recognizes the enclosure as a media file (or something, it doesn't work otherwise).
+		encoded_page_url = '{}/video/{}.m4v'.format(gateway.server_url, self.file.video_id) # Extension is needed so that iTunes recognizes the enclosure as a media file (or something, it doesn't work otherwise).
 		published = email.utils.formatdate((self.published - datetime.datetime(
 			1970, 1, 1)) / datetime.timedelta(seconds=1))
 		
@@ -77,7 +61,7 @@ class Video:
 			n('title', self.title),
 			n('itunes__summary', self.description),
 			n('pubDate', published),
-			n('guid', self.file.page_url),
+			n('guid', self.file.video_id),
 			n('enclosure', url = encoded_page_url))
 	
 	@classmethod
@@ -89,11 +73,11 @@ class Video:
 		published = datetime.datetime.strptime(published, '%Y-%m-%dT%H:%M:%S.%fZ')
 		
 		group_node = node.find(name='media:group')
-		page_url = group_node.find(name = 'media:player').attrs['url']
+		video_id = group_node.find(name = 'yt:videoid').text()
 		description = group_node.find(name = 'media:description', attrs = { 'type': 'plain' }).text()
 		title = group_node.find(name = 'media:title', attrs = { 'type': 'plain' }).text()
 		
-		return cls(title, description, author, published, file_factory.get_file(page_url))
+		return cls(title, description, author, published, file_factory.get_file(video_id))
 
 
 class Feed:
@@ -172,7 +156,7 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 				
 				self.wfile.write(str(doc).encode())
 			elif path[0] == 'video':
-				file = self.file_factory.get_file(URLEncoder.decode(path[1]))
+				file = self.file_factory.get_file(path[1])
 				download_url = file.download_url
 				request = urllib.request.Request(download_url)
 				
@@ -189,7 +173,10 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 					
 					self.end_headers()
 					
-					shutil.copyfileobj(response, self.wfile)
+					try:
+						shutil.copyfileobj(response, self.wfile)
+					except socket.error:
+						pass # Ignore errors like a closed connection.
 			else:
 				self.send_response(404)
 				self.end_headers()
@@ -198,15 +185,15 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 class FileFactory:
 	def __init__(self, gateway):
 		self.gateway = gateway
-		self._files_by_url = { } # map from url as string to File instance
+		self._files_by_id = { } # map from url as string to File instance
 	
-	def get_file(self, page_url):
-		file = self._files_by_url.get(page_url)
+	def get_file(self, video_id):
+		file = self._files_by_id.get(video_id)
 		
 		if file is None:
-			file = Video.File(self.gateway, page_url)
+			file = Video.File(self.gateway, video_id)
 			
-			self._files_by_url[page_url] = file
+			self._files_by_id[video_id] = file
 		
 		return file
 
