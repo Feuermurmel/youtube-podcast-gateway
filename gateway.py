@@ -3,6 +3,13 @@ from lib import easy, env
 import lib.easy.xml
 
 
+def log(msg, *args):
+	if args:
+		msg = msg.format(*args)
+	
+	print(msg, file = sys.stderr)
+
+
 class Video:
 	class File:
 		def __init__(self, gateway, video_id):
@@ -159,6 +166,11 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 				file = self.file_factory.get_file(path[1])
 				download_url = file.download_url
 				request = urllib.request.Request(download_url)
+				
+				if 'Range' in self.headers:
+					log('Request for range {} of video with id {}.', self.headers['Range'], file.video_id)
+				else:
+					log('Request for video with id {}.', file.video_id)
 				
 				for i in ['Range']:
 					if i in self.headers:
