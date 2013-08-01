@@ -60,11 +60,12 @@ class Video:
 			
 			return self._download_url
 	
-	def __init__(self, title, description, author, published, file : File):
+	def __init__(self, title, description, author, published, duration, file : File):
 		self.title = title
 		self.description = description
 		self.author = author
 		self.published = published
+		self.duration = duration
 		self.file = file
 	
 	def __repr__(self):
@@ -80,6 +81,7 @@ class Video:
 			'item',
 			n('title', self.title),
 			n('itunes__summary', self.description),
+			n('itunes__duration', self.duration),
 			n('pubDate', published),
 			n('guid', self.file.video_id),
 			n('enclosure', url = encoded_page_url))
@@ -98,6 +100,11 @@ class Video:
 		title = group_node.find(name = 'media:title', attrs = { 'type': 'plain' }).text()
 		
 		return cls(title, description, author, published, file_factory.get_file(video_id))
+		if duration:
+			duration = duration[0].attrs['seconds']
+		else:
+			duration = ''
+		return cls(title, description, author, published, duration, file_factory.get_file(video_id))
 
 
 class Feed:
