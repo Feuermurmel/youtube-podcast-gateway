@@ -19,7 +19,20 @@ class Video:
 			self._download_url_time = None
 		
 		def _get_download_url(self):
-			formats = [22, 18, 17]
+			formats = [
+			#	37, #	:	mp4	[1080x1920]
+			#	46, #	:	webm	[1080x1920]
+				22, #	:	mp4	[720x1280]
+			#	45, #	:	webm	[720x1280]
+			#	35, #	:	flv	[480x854]
+			#	44, #	:	webm	[480x854]
+			#	34, #	:	flv	[360x640]
+				18, #	:	mp4	[360x640]
+			#	43, #	:	webm	[360x640]
+			#	5 , #	:	flv	[240x400]
+				17, #	:	mp4	[144x176]
+			]
+			
 			
 			for i in formats:
 				proc = subprocess.Popen(['youtube-dl', '-g', '-f', str(i), 'http://www.youtube.com/watch?v={}'.format(self.video_id)], stdout = subprocess.PIPE, stderr = subprocess.PIPE)
@@ -28,7 +41,7 @@ class Video:
 				if proc.returncode:
 					message = stderr.decode().strip()
 					
-					if message == 'ERROR: requested format not available':
+					if message.startswith('ERROR: requested format not available'):
 						continue
 					else:
 						raise Exception('Getting the download URL failed: {}'.format(message))
