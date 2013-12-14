@@ -73,9 +73,9 @@ class Video:
 	def __repr__(self):
 		return '<Video title = {}, author = {}>'.format(self.title, self.author)
 	
-	def make_podcast_entry_elem(self, gateway):
+	def make_podcast_entry_elem(self, base_url):
 		n = lib.easy.xml.node
-		encoded_page_url = '{}/video/{}.m4v'.format(gateway.server_url, self.file.video_id) # Extension is needed so that iTunes recognizes the enclosure as a media file (or something, it doesn't work otherwise).
+		encoded_page_url = '{}/video/{}.m4v'.format(base_url, self.file.video_id) # Extension is needed so that iTunes recognizes the enclosure as a media file (or something, it doesn't work otherwise).
 		published = email.utils.formatdate((self.published - datetime.datetime(
 			1970, 1, 1)) / datetime.timedelta(seconds=1))
 		
@@ -132,7 +132,7 @@ class Feed:
 	def __repr__(self):
 		return '<Feed videos = {}>'.format(self.videos)
 	
-	def make_podcast_feed_elem(self, gateway):
+	def make_podcast_feed_elem(self, base_url):
 		n = lib.easy.xml.node
 		
 		def channel_nodes():
@@ -142,7 +142,7 @@ class Feed:
 				yield n('itunes__image', href = self.thumbnail_url)
 			
 			for i in self.videos:
-				i.make_podcast_entry_elem(gateway)
+				yield i.make_podcast_entry_elem(base_url)
 		
 		return n(
 			'rss',
@@ -196,58 +196,60 @@ class Feed:
 
 class RequestHandler(http.server.SimpleHTTPRequestHandler):
 	file_factory = None
-	
+
 	def do_GET(self):
-		assert self.path[0] == '/'
+		path = [i for i in self.path.split('/') if i]
+		path[-1] = path[-1].rsplit('.', 1)[0] # Allow flexibility in URLs by ignoring any file name extensions
+		base_url = self.get_base_url()
 		
-		if self.headers['host'] != self.server.host_port:
-			self.send_response(301)
-			self.send_header('location', self.server.server_url + self.path)
+		feed_for_type = { 'uploads': Feed.user_uploads, 'playlist': Feed.playlist }
+		
+		if path[0] in feed_for_type:
+			doc = feed_for_type[path[0]](self.file_factory, path[1]).make_podcast_feed_elem(base_url)
+			
+			self.send_response(200)
+			self.send_header('content-type', 'application/atom+xml; charset=utf-8')
 			self.end_headers()
-		else:
-			path = self.path[1:].split('/')
-			path[-1] = path[-1].rsplit('.', 1)[0] # Allow flexibility in URLs by ignoring any file name extensions
 			
-			feed_for_type = { 'uploads': Feed.user_uploads, 'playlist': Feed.playlist }
+			self.wfile.write(str(doc).encode())
+		elif path[0] == 'video':
+			file = self.file_factory.get_file(path[1])
+			download_url = file.download_url
+			request = urllib.request.Request(download_url)
 			
-			if path[0] in feed_for_type:
-				doc = feed_for_type[path[0]](self.file_factory, path[1]).make_podcast_feed_elem(self.server)
-				
-				self.send_response(200)
-				self.send_header('content-type', 'application/atom+xml; charset=utf-8')
-				self.end_headers()
-				
-				self.wfile.write(str(doc).encode())
-			elif path[0] == 'video':
-				file = self.file_factory.get_file(path[1])
-				download_url = file.download_url
-				request = urllib.request.Request(download_url)
-				
-				if 'Range' in self.headers:
-					util.log('Request for range {} of video with id {}.', self.headers['Range'], file.video_id)
-				else:
-					util.log('Request for video with id {}.', file.video_id)
-				
-				for i in ['Range']:
-					if i in self.headers:
-						request.add_header(i, self.headers[i])
-				
-				with urllib.request.urlopen(request) as response:
-					self.send_response(200)
-					
-					for i in ['Content-Type', 'Content-Length', 'Content-Range', 'Accept-Ranges']:
-						if i in response.headers:
-							self.send_header(i, response.headers[i])
-					
-					self.end_headers()
-					
-					try:
-						shutil.copyfileobj(response, self.wfile)
-					except socket.error:
-						pass # Ignore errors like a closed connection.
+			if 'Range' in self.headers:
+				util.log('Request for range {} of video with id {}.', self.headers['Range'], file.video_id)
 			else:
-				self.send_response(404)
+				util.log('Request for video with id {}.', file.video_id)
+			
+			for i in ['Range']:
+				if i in self.headers:
+					request.add_header(i, self.headers[i])
+			
+			with urllib.request.urlopen(request) as response:
+				self.send_response(200)
+				
+				for i in ['Content-Type', 'Content-Length', 'Content-Range', 'Accept-Ranges']:
+					if i in response.headers:
+						self.send_header(i, response.headers[i])
+				
 				self.end_headers()
+				
+				try:
+					shutil.copyfileobj(response, self.wfile)
+				except socket.error:
+					pass # Ignore errors like a closed connection.
+		else:
+			self.send_response(404)
+			self.end_headers()
+
+	def get_base_url(self):
+		host_header = self.headers['Host']
+		
+		if host_header:
+			return 'http://{}'.format(host_header)
+		else:
+			return 'http://{}:{}'.format(env.local_address_best_guess(), self.server.port)
 
 
 class FileFactory:
@@ -267,19 +269,15 @@ class FileFactory:
 
 
 class Gateway(socketserver.ThreadingMixIn, http.server.HTTPServer):
-	def __init__(self, port = 8080, server_address = None):
-		if server_address is None:
-			server_address = env.local_address_best_guess()
+	def __init__(self, port = 8080):
+		self.port = port
 		
-		self.host_port = '{}:{}'.format(server_address, 8080)
-		self.server_url = 'http://{}'.format(self.host_port)
-		
-		class RequestHandler_(RequestHandler):
+		class Handler(RequestHandler):
 			file_factory = FileFactory(self)
 		
-		super().__init__(('', port), RequestHandler_)
+		super().__init__(('', port), Handler)
 	
 	def serve_forever(self):
-		util.log('Listening on {} ...', self.host_port)
+		util.log('Listening on port {} ...', self.port)
 		
 		super().serve_forever()
