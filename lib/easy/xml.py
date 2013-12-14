@@ -139,7 +139,11 @@ class ParseHandler:
 
 
 def node(name, *nodes, **attrs):
-	nodes = [i if isinstance(i, Node) else TextNode(i) for i in nodes]
+	nodes = [TextNode(i) if isinstance(i, str) else i for i in nodes]
+	
+	assert all(isinstance(i, Node) for i in nodes)
+	assert all(isinstance(k, str) and isinstance(v, str) for k, v in attrs.items())
+	
 	attrs = { k.replace('__', ':'): v for k, v in attrs.items() }
 	
 	return ElementNode(name.replace('__', ':'), attrs, nodes)

@@ -1,4 +1,4 @@
-import pickle, datetime
+import sys
 
 
 def freeze(obj):
@@ -27,16 +27,6 @@ def memorized(func):
 			return value
 	
 	return fn
-
-
-def pickle(data, path):
-	with open(path, 'wb') as file:
-		return pickle.dump(data, file)
-
-
-def unpickle(path):
-	with open(path, 'rb') as file:
-		return pickle.load(file)
 
 
 def log(msg, *args):

@@ -1,13 +1,15 @@
-import urllib.request, time, sys, datetime, socketserver, http.server, shutil, email, subprocess, socket
-from . import easy, env
+import urllib.request, datetime, socketserver, http.server, shutil, email, subprocess, socket
+from . import easy, env, util
 import lib.easy.xml
 
 
-def log(msg, *args):
-	if args:
-		msg = msg.format(*args)
+def request_xml(request_url):
+	util.log('Requesting {} ...', request_url)
 	
-	print(msg, file = sys.stderr)
+	with urllib.request.urlopen(request_url) as file:
+		data = file.read()
+	
+	return easy.xml.parse(data.decode())
 
 
 class Video:
@@ -60,7 +62,7 @@ class Video:
 			
 			return self._download_url
 	
-	def __init__(self, title, description, author, published, duration, file : File):
+	def __init__(self, title, description, author, published, duration, file):
 		self.title = title
 		self.description = description
 		self.author = author
@@ -69,7 +71,7 @@ class Video:
 		self.file = file
 	
 	def __repr__(self):
-		return '<Video title = %r, author = %r>' % (self.title, self.author)
+		return '<Video title = {}, author = {}>'.format(self.title, self.author)
 	
 	def make_podcast_entry_elem(self, gateway):
 		n = lib.easy.xml.node
@@ -121,40 +123,41 @@ class Video:
 
 
 class Feed:
-	def __init__(self, title, videos, feed_url):
+	def __init__(self, title, videos, feed_url, thumbnail_url):
 		self.title = title
 		self.videos = videos
 		self.feed_url = feed_url
+		self.thumbnail_url = thumbnail_url
 	
 	def __repr__(self):
-		return '<Feed videos = %s>' % self.videos
+		return '<Feed videos = {}>'.format(self.videos)
 	
 	def make_podcast_feed_elem(self, gateway):
 		n = lib.easy.xml.node
 		
+		def channel_nodes():
+			yield n('title', self.title)
+			
+			if self.thumbnail_url is not None:
+				yield n('itunes__image', href = self.thumbnail_url)
+			
+			for i in self.videos:
+				i.make_podcast_entry_elem(gateway)
+		
 		return n(
 			'rss',
-			n('channel',
-				n('title', self.title),
-				*[i.make_podcast_entry_elem(gateway) for i in self.videos]),
+			n('channel', *channel_nodes()),
 			xmlns__itunes = 'http://www.itunes.com/dtds/podcast-1.0.dtd',
 			version = '2.0')
-	
+
 	@classmethod
-	def from_feed_url(cls, file_factory, feed_url):
+	def from_feed_url(cls, file_factory, feed_url, thumbnail_url):
 		videos = []
 		title = None
 		max_results = 50
 		
 		while len(videos) < 1000:
-			request_url = '%s?v=%s&max-results=%s&start-index=%s' % (feed_url, 2, max_results, len(videos) + 1)
-			
-			log('Requesting {} ...', request_url)
-			
-			with urllib.request.urlopen(request_url) as file:
-				data = file.read()
-			
-			dom = easy.xml.parse(data.decode())
+			dom = request_xml('{}?v={}&max-results={}&start-index={}'.format(feed_url, 2, max_results, len(videos) + 1))
 			
 			if title is None:
 				title, = (i for i in dom.nodes if i.name == 'title')
@@ -167,7 +170,28 @@ class Feed:
 			
 			videos.extend(videos_add)
 		
-		return cls(title, videos, feed_url)
+		return cls(title, videos, feed_url, thumbnail_url)
+	
+	@classmethod
+	def user_uploads(cls, file_factory, username):
+		feed_url = 'http://gdata.youtube.com/feeds/api/users/{}/uploads'.format(username)
+		dom = request_xml('http://gdata.youtube.com/feeds/api/users/{}?v=2'.format(username))
+		
+		nodes = list(dom.walk(name = 'media:thumbnail'))
+		
+		if nodes:
+			node, = nodes
+			avatar_uri = node.attrs['url']
+		else:
+			avatar_uri = None
+		
+		return cls.from_feed_url(file_factory, feed_url, avatar_uri)
+	
+	@classmethod
+	def playlist(cls, file_factory, playlist_id):
+		feed_url = 'http://gdata.youtube.com/feeds/api/playlists/{}'.format(playlist_id)
+		
+		return cls.from_feed_url(file_factory, feed_url, None)
 
 
 class RequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -184,11 +208,10 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 			path = self.path[1:].split('/')
 			path[-1] = path[-1].rsplit('.', 1)[0] # Allow flexibility in URLs by ignoring any file name extensions
 			
-			feed_for_type = { 'uploads': 'users/%s/uploads', 'playlist': 'playlists/%s' }
+			feed_for_type = { 'uploads': Feed.user_uploads, 'playlist': Feed.playlist }
 			
 			if path[0] in feed_for_type:
-				feed_url = 'http://gdata.youtube.com/feeds/api/%s' % (feed_for_type[path[0]] % path[1])
-				doc = Feed.from_feed_url(self.file_factory, feed_url).make_podcast_feed_elem(self.server)
+				doc = feed_for_type[path[0]](self.file_factory, path[1]).make_podcast_feed_elem(self.server)
 				
 				self.send_response(200)
 				self.send_header('content-type', 'application/atom+xml; charset=utf-8')
@@ -201,9 +224,9 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 				request = urllib.request.Request(download_url)
 				
 				if 'Range' in self.headers:
-					log('Request for range {} of video with id {}.', self.headers['Range'], file.video_id)
+					util.log('Request for range {} of video with id {}.', self.headers['Range'], file.video_id)
 				else:
-					log('Request for video with id {}.', file.video_id)
+					util.log('Request for video with id {}.', file.video_id)
 				
 				for i in ['Range']:
 					if i in self.headers:
@@ -248,8 +271,8 @@ class Gateway(socketserver.ThreadingMixIn, http.server.HTTPServer):
 		if server_address is None:
 			server_address = env.local_address_best_guess()
 		
-		self.host_port = '%s:%s' % (server_address, 8080)
-		self.server_url = 'http://%s' % self.host_port
+		self.host_port = '{}:{}'.format(server_address, 8080)
+		self.server_url = 'http://{}'.format(self.host_port)
 		
 		class RequestHandler_(RequestHandler):
 			file_factory = FileFactory(self)
@@ -257,6 +280,6 @@ class Gateway(socketserver.ThreadingMixIn, http.server.HTTPServer):
 		super().__init__(('', port), RequestHandler_)
 	
 	def serve_forever(self):
-		log('Listening on {} ...', self.host_port)
+		util.log('Listening on {} ...', self.host_port)
 		
 		super().serve_forever()

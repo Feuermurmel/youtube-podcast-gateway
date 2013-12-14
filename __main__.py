@@ -1,3 +1,3 @@
 from lib import gateway
 
-gateway.Gateway(server_address = 'feuermurmel.ch').serve_forever()
+gateway.Gateway(server_address = 'imac.local').serve_forever()
