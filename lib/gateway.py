@@ -1,5 +1,5 @@
 import urllib.request, time, sys, datetime, socketserver, http.server, shutil, email, subprocess, socket
-from lib import easy, env
+from . import easy, env
 import lib.easy.xml
 
 
@@ -80,7 +80,9 @@ class Video:
 		return n(
 			'item',
 			n('title', self.title),
-			n('itunes__summary', self.description),
+			n('itunes__subtitle', self.description), # Shows in itunes description column
+			n('itunes__summary', self.description), # Shows in iTunes information window
+			n('description', self.description), # Shown on iPhone
 			n('itunes__duration', self.duration),
 			n('pubDate', published),
 			n('guid', self.file.video_id),
@@ -96,14 +98,25 @@ class Video:
 		
 		group_node = node.find(name='media:group')
 		video_id = group_node.find(name = 'yt:videoid').text()
-		description = group_node.find(name = 'media:description', attrs = { 'type': 'plain' }).text()
-		title = group_node.find(name = 'media:title', attrs = { 'type': 'plain' }).text()
 		
-		return cls(title, description, author, published, file_factory.get_file(video_id))
+		duration = list(group_node.walk(name = 'yt:duration'))
+		
 		if duration:
 			duration = duration[0].attrs['seconds']
 		else:
 			duration = ''
+		
+		def get_metadata(name):
+			res = list(group_node.walk(name = name, attrs = { 'type': 'plain' }))
+			
+			if res:
+				return res[0].text()
+			else:
+				return ''
+		
+		description = get_metadata('media:description')
+		title = get_metadata('media:title')
+		
 		return cls(title, description, author, published, duration, file_factory.get_file(video_id))
 
 

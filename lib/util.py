@@ -29,12 +29,6 @@ def memorized(func):
 	return fn
 
 
-@memorized
-def get_file(path):
-	with open(path, 'rt') as file:
-		return file.read()
-
-
 def pickle(data, path):
 	with open(path, 'wb') as file:
 		return pickle.dump(data, file)
@@ -45,6 +39,8 @@ def unpickle(path):
 		return pickle.load(file)
 
 
-def epoch(dt):
-	return (dt - datetime.datetime(1970, 1, 1)) / datetime.timedelta(seconds = 1)
-
+def log(msg, *args):
+	if args:
+		msg = msg.format(*args)
+	
+	print(msg, file = sys.stderr)
