@@ -149,12 +149,24 @@ class Feed:
 			n('channel', *channel_nodes()),
 			xmlns__itunes = 'http://www.itunes.com/dtds/podcast-1.0.dtd',
 			version = '2.0')
-
+	
 	@classmethod
-	def from_feed_url(cls, file_factory, feed_url, thumbnail_url):
+	def get_avatar_url(cls, user_url):
+		dom = request_xml(user_url)
+		nodes = list(dom.walk(name = 'media:thumbnail'))
+		
+		if nodes:
+			node, = nodes
+			return node.attrs['url']
+		else:
+			return None
+	
+	@classmethod
+	def from_feed_url(cls, file_factory, feed_url):
 		videos = []
 		title = None
 		max_results = 50
+		avatar_url = ...
 		
 		while len(videos) < 1000:
 			dom = request_xml('{}?v={}&max-results={}&start-index={}'.format(feed_url, 2, max_results, len(videos) + 1))
@@ -169,29 +181,25 @@ class Feed:
 				break
 			
 			videos.extend(videos_add)
+			
+			if avatar_url is ...:
+				user_url = list(dom.walk(name = 'author'))[0].find(name = 'uri').text()
+				
+				avatar_url = cls.get_avatar_url(user_url)
 		
-		return cls(title, videos, feed_url, thumbnail_url)
+		return cls(title, videos, feed_url, avatar_url)
 	
 	@classmethod
 	def user_uploads(cls, file_factory, username):
 		feed_url = 'http://gdata.youtube.com/feeds/api/users/{}/uploads'.format(username)
-		dom = request_xml('http://gdata.youtube.com/feeds/api/users/{}?v=2'.format(username))
 		
-		nodes = list(dom.walk(name = 'media:thumbnail'))
-		
-		if nodes:
-			node, = nodes
-			avatar_uri = node.attrs['url']
-		else:
-			avatar_uri = None
-		
-		return cls.from_feed_url(file_factory, feed_url, avatar_uri)
+		return cls.from_feed_url(file_factory, feed_url)
 	
 	@classmethod
 	def playlist(cls, file_factory, playlist_id):
 		feed_url = 'http://gdata.youtube.com/feeds/api/playlists/{}'.format(playlist_id)
 		
-		return cls.from_feed_url(file_factory, feed_url, None)
+		return cls.from_feed_url(file_factory, feed_url)
 
 
 class RequestHandler(http.server.SimpleHTTPRequestHandler):
