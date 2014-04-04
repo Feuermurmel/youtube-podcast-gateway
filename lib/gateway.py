@@ -1,4 +1,4 @@
-import urllib.request, datetime, socketserver, http.server, shutil, email, subprocess, socket
+import urllib.request, datetime, socketserver, http.server, shutil, email, subprocess, socket, functools
 from . import easy, env, util
 import lib.easy.xml
 
@@ -14,27 +14,35 @@ def request_xml(request_url):
 
 class Video:
 	class File:
-		def __init__(self, gateway, video_id):
+		def __init__(self, gateway, video_id, audio_only):
 			self.gateway = gateway
 			self.video_id = video_id
+			self.audio_only = audio_only
 			self._download_url = None
 			self._download_url_time = None
 		
 		def _get_download_url(self):
-			formats = [
-			#	37, #	:	mp4	[1080x1920]
-			#	46, #	:	webm	[1080x1920]
-				22, #	:	mp4	[720x1280]
-			#	45, #	:	webm	[720x1280]
-			#	35, #	:	flv	[480x854]
-			#	44, #	:	webm	[480x854]
-			#	34, #	:	flv	[360x640]
-				18, #	:	mp4	[360x640]
-			#	43, #	:	webm	[360x640]
-			#	5 , #	:	flv	[240x400]
-				17, #	:	mp4	[144x176]
-			]
+			# 248         webm      1080p       DASH webm 
+			# 247         webm      720p        DASH webm 
+			# 244         webm      480p        DASH webm 
+			# 243         webm      360p        DASH webm 
+			# 242         webm      240p        DASH webm 
+			# 171         webm      audio only  DASH webm audio , audio@ 48k (worst)
+			# 160         mp4       192p        DASH video 
+			# 140         m4a       audio only  DASH audio , audio@128k
+			# 137         mp4       1080p       DASH video 
+			# 136         mp4       720p        DASH video 
+			# 135         mp4       480p        DASH video 
+			# 134         mp4       360p        DASH video 
+			# 133         mp4       240p        DASH video 
+			# 43          webm      640x360     
+			# 36          3gp       320x240     
+			# 22          mp4       1280x720    (best)
+			# 18          mp4       640x360     
+			# 17          3gp       176x144     
+			# 5           flv       400x240     
 			
+			formats = [140, 171] if self.audio_only else [22, 18, 17]
 			
 			for i in formats:
 				proc = subprocess.Popen(['youtube-dl', '-g', '-f', str(i), 'http://www.youtube.com/watch?v={}'.format(self.video_id)], stdout = subprocess.PIPE, stderr = subprocess.PIPE)
@@ -74,8 +82,15 @@ class Video:
 		return '<Video title = {}, author = {}>'.format(self.title, self.author)
 	
 	def make_podcast_entry_elem(self, base_url):
+		if self.file.audio_only:
+			type = 'audio'
+			suffix = 'm4a'
+		else:
+			type = 'video'
+			suffix = 'm4v'
+		
 		n = lib.easy.xml.node
-		encoded_page_url = '{}/video/{}.m4v'.format(base_url, self.file.video_id) # Extension is needed so that iTunes recognizes the enclosure as a media file (or something, it doesn't work otherwise).
+		encoded_page_url = '{}/{}/{}.{}'.format(base_url, type, self.file.video_id, suffix) # Extension is needed so that iTunes recognizes the enclosure as a media file (or something, it doesn't work otherwise).
 		published = email.utils.formatdate((self.published - datetime.datetime(
 			1970, 1, 1)) / datetime.timedelta(seconds=1))
 		
@@ -119,7 +134,7 @@ class Video:
 		description = get_metadata('media:description')
 		title = get_metadata('media:title')
 		
-		return cls(title, description, author, published, duration, file_factory.get_file(video_id))
+		return cls(title, description, author, published, duration, file_factory(video_id))
 
 
 class Feed:
@@ -206,47 +221,26 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 	file_factory = None
 
 	def do_GET(self):
-		path = [i for i in self.path.split('/') if i]
-		path[-1] = path[-1].rsplit('.', 1)[0] # Allow flexibility in URLs by ignoring any file name extensions
+		path, args = self.parse_path(self.path)
 		base_url = self.get_base_url()
 		
 		feed_for_type = { 'uploads': Feed.user_uploads, 'playlist': Feed.playlist }
 		
 		if path[0] in feed_for_type:
-			doc = feed_for_type[path[0]](self.file_factory, path[1]).make_podcast_feed_elem(base_url)
+			audio_only = args.get('audio', 'false') == 'true'
+			file_factory = functools.partial(self.file_factory.get_file, audio_only = audio_only)
+			feed = feed_for_type[path[0]](file_factory, path[1])
+			doc = feed.make_podcast_feed_elem(base_url)
 			
 			self.send_response(200)
 			self.send_header('content-type', 'application/atom+xml; charset=utf-8')
 			self.end_headers()
 			
 			self.wfile.write(str(doc).encode())
+		elif path[0] == 'audio':
+			self.handle_media_request(self.file_factory.get_file(path[1], True))
 		elif path[0] == 'video':
-			file = self.file_factory.get_file(path[1])
-			download_url = file.download_url
-			request = urllib.request.Request(download_url)
-			
-			if 'Range' in self.headers:
-				util.log('Request for range {} of video with id {}.', self.headers['Range'], file.video_id)
-			else:
-				util.log('Request for video with id {}.', file.video_id)
-			
-			for i in ['Range']:
-				if i in self.headers:
-					request.add_header(i, self.headers[i])
-			
-			with urllib.request.urlopen(request) as response:
-				self.send_response(200)
-				
-				for i in ['Content-Type', 'Content-Length', 'Content-Range', 'Accept-Ranges']:
-					if i in response.headers:
-						self.send_header(i, response.headers[i])
-				
-				self.end_headers()
-				
-				try:
-					shutil.copyfileobj(response, self.wfile)
-				except socket.error:
-					pass # Ignore errors like a closed connection.
+			self.handle_media_request(self.file_factory.get_file(path[1], False))
 		else:
 			self.send_response(404)
 			self.end_headers()
@@ -258,6 +252,45 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 			return 'http://{}'.format(host_header)
 		else:
 			return 'http://{}:{}'.format(env.local_address_best_guess(), self.server.port)
+	
+	def handle_media_request(self, file):
+		request = urllib.request.Request(file.download_url)
+		
+		if 'Range' in self.headers:
+			util.log('Request for range {} of video with id {}.', self.headers['Range'], file.video_id)
+		else:
+			util.log('Request for video with id {}.', file.video_id)
+		
+		for i in ['Range']:
+			if i in self.headers:
+				request.add_header(i, self.headers[i])
+		
+		with urllib.request.urlopen(request) as response:
+			self.send_response(200)
+			
+			for i in ['Content-Type', 'Content-Length', 'Content-Range', 'Accept-Ranges']:
+				if i in response.headers:
+					self.send_header(i, response.headers[i])
+			
+			self.end_headers()
+			
+			try:
+				shutil.copyfileobj(response, self.wfile)
+			except socket.error:
+				pass # Ignore errors like a closed connection.
+	
+	@classmethod
+	def parse_path(cls, path):
+		path, *args = path.split('?', 1)
+		path = [i for i in path.split('/') if i]
+		path[-1] = path[-1].rsplit('.', 1)[0] # Allow flexibility in URLs by ignoring any file name extensions
+		
+		if args:
+			args, = args
+			
+			args = dict(i.split('=', 1) for i in args.split('&'))
+		
+		return path, args
 
 
 class FileFactory:
@@ -265,13 +298,14 @@ class FileFactory:
 		self.gateway = gateway
 		self._files_by_id = { } # map from url as string to File instance
 	
-	def get_file(self, video_id):
-		file = self._files_by_id.get(video_id)
+	def get_file(self, video_id, audio_only):
+		key = video_id, audio_only
+		file = self._files_by_id.get(key)
 		
 		if file is None:
-			file = Video.File(self.gateway, video_id)
+			file = Video.File(self.gateway, video_id, audio_only)
 			
-			self._files_by_id[video_id] = file
+			self._files_by_id[key] = file
 		
 		return file
 
