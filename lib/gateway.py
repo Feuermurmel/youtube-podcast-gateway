@@ -287,8 +287,9 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 		
 		if args:
 			args, = args
-			
 			args = dict(i.split('=', 1) for i in args.split('&'))
+		else:
+			args = { }
 		
 		return path, args
 
