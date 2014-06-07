@@ -1,4 +1,5 @@
 /*.json
+/youtube-dl
 /venv/
 .idea/
 *.pyc

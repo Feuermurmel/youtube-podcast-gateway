@@ -1,4 +1,4 @@
-import socket
+import socket, os
 from lib import util
 
 
@@ -17,3 +17,9 @@ def local_address_best_guess():
 	"""Return the local address of a random network interface (usually the first one) or, if configured, the network.local-address key in the default configuration."""
 
 	return local_address_for_sending_to('1.0.0.0')
+
+
+def get_script_dir():
+	import __main__
+	
+	return os.path.dirname(__main__.__file__)
