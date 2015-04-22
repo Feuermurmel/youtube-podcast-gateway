@@ -1,3 +1,3 @@
 from lib import gateway
 
-gateway.Gateway().serve_forever()
+gateway.Gateway().run()

@@ -1,4 +1,4 @@
-/.idea
-/devel
+/*.json
+/venv/
+.idea/
 *.pyc
-

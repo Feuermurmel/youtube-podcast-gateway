@@ -29,8 +29,8 @@ def memorized(func):
 	return fn
 
 
-def log(msg, *args):
+def log(message, *args):
 	if args:
-		msg = msg.format(*args)
+		message = message.format(*args)
 	
-	print(msg, file = sys.stderr)
+	print(message, file = sys.stderr)
