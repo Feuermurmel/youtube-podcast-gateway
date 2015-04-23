@@ -278,7 +278,7 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 		
 		handler.end_headers()
 		
-		self.log('Returned status {}.', handler.path, code)
+		self.log('Returned status {}.', code)
 	
 	def _create_uploads_feed(self, channel_id, audio_only):
 		channel = self._gateway.service.get_channel_by_id_or_username(channel_id, ['contentDetails', 'snippet'])
