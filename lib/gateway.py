@@ -304,14 +304,17 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 		return _Feed(title, description, elements, thumbnail_url)
 	
 	def _handle_media_request(self, handler, file : _File):
+		range_header = handler.headers.get('Range')
+		
+		if range_header is not None:
+			self.log('Request for video {}.', file.video_id)
+		else:
+			self.log('Request for range {} of video {}.', range_header, file.video_id)
+		
 		request = urllib.request.Request(file.download_url)
 		
-		if 'Range' in handler.headers:
-			self.log('Request for range {} of video {}.', handler.headers['Range'], file.video_id)
-			
-			request.add_header('Range', handler.headers['Range'])
-		else:
-			self.log('Request for video {}.', file.video_id)
+		if range_header is not None:
+			request.add_header('Range', range_header)
 		
 		with urllib.request.urlopen(request) as response:
 			header_names = ['Content-Type', 'Content-Length', 'Content-Range', 'Accept-Ranges']
