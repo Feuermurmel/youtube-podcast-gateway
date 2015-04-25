@@ -79,7 +79,7 @@ class _File:
 		return self._download_url
 
 
-class FileFactory:
+class _FileFactory:
 	def __init__(self, gateway):
 		self._gateway = gateway
 		self._files_by_id = { } # map from url as string to File instance
@@ -152,7 +152,7 @@ class _Feed:
 			yield n('description', self.description)
 			
 			if self.thumbnail_url is not None:
-				yield n('itunes__image', href = self.thumbnail_url)
+				yield n('image', n('url', self.thumbnail_url))
 			
 			for i in self.videos:
 				yield i.make_podcast_entry_elem(base_url)
@@ -167,23 +167,26 @@ class _Feed:
 class Gateway:
 	def __init__(self, port = 8080):
 		self.service = youtube.YouTube.get_authenticated_instance()
-		self.file_factory = FileFactory(self)
+		self.file_factory = _FileFactory(self)
 		self._request_counter = 0
 		self._request_counter_lock = threading.Lock()
 		
 		# noinspection PyMethodParameters
-		class Handler(RequestHandler):
+		class Handler(_RequestHandler):
 			def __init__(handler_self, *args):
-				with self._request_counter_lock:
-					request_counter = self._request_counter + 1
-					self._request_counter = request_counter
-				
-				super().__init__(self, request_counter, *args)
+				super().__init__(self, *args)
 		
 		class _Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
 			pass
 		
 		self.server = _Server(('', port), Handler)
+	
+	def get_next_request_id(self):
+		with self._request_counter_lock:
+			value = self._request_counter + 1
+			self._request_counter = value
+		
+		return value
 	
 	def run(self):
 		util.log('Starting server on port {} ...', self.server.server_port)
@@ -191,10 +194,10 @@ class Gateway:
 		self.server.serve_forever()
 
 
-class RequestHandler(http.server.SimpleHTTPRequestHandler):
-	def __init__(self, gateway : Gateway, request_id, *args):
+class _RequestHandler(http.server.SimpleHTTPRequestHandler):
+	def __init__(self, gateway : Gateway, *args):
 		self._gateway = gateway
-		self._request_id = request_id
+		self._request_id = gateway.get_next_request_id()
 		
 		# WTF?! The handler method is called form inside __init__()!
 		super().__init__(*args)
@@ -232,6 +235,24 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 		except Exception:
 			sys.excepthook(*sys.exc_info())
 	
+	def _send_headers(self, handler, code, headers = { }):
+		handler.send_response(code)
+		
+		for k, v in headers.items():
+			handler.send_header(k, v)
+		
+		handler.end_headers()
+		
+		self.log('Returned status {}.', code)
+	
+	def _get_base_url(self, handler):
+		host_header = handler.headers['Host']
+		
+		if host_header:
+			return 'http://{}'.format(host_header)
+		else:
+			return 'http://{}:{}'.format(env.local_address_best_guess(), self._gateway.server.server_port)
+	
 	def _handle_feed_request(self, handler, type, id, audio_only):
 		feeds_by_type = {
 			'uploads': self._create_uploads_feed,
@@ -250,35 +271,25 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 			
 			handler.wfile.write(str(doc).encode())
 	
-	def _get_base_url(self, handler):
-		host_header = handler.headers['Host']
+	def _handle_media_request(self, handler, file : _File):
+		range_header = handler.headers.get('Range')
 		
-		if host_header:
-			return 'http://{}'.format(host_header)
+		if range_header is not None:
+			self.log('Request for video {}.', file.video_id)
 		else:
-			return 'http://{}:{}'.format(env.local_address_best_guess(), self._gateway.server.server_port)
-	
-	def _create_video(self, video, audio_only, date = None):
-		if date is None:
-			date = isodate.parse_datetime(video.snippet.publishedAt)
+			self.log('Request for range {} of video {}.', range_header, file.video_id)
 		
-		title = video.snippet.title
-		description = video.snippet.description
-		author = video.snippet.channelTitle
-		duration = isodate.parse_duration(video.contentDetails.duration)
-		file = self._gateway.file_factory.get_file(video.id, audio_only)
+		request = urllib.request.Request(file.download_url)
 		
-		return _Video(title, description, author, date, duration, file)
-	
-	def _send_headers(self, handler, code, headers = { }):
-		handler.send_response(code)
+		if range_header is not None:
+			request.add_header('Range', range_header)
 		
-		for k, v in headers.items():
-			handler.send_header(k, v)
-		
-		handler.end_headers()
-		
-		self.log('Returned status {}.', code)
+		with urllib.request.urlopen(request) as response:
+			header_names = ['Content-Type', 'Content-Length', 'Content-Range', 'Accept-Ranges']
+			headers = { k: response.headers[k] for k in header_names }
+			
+			self._send_headers(handler, 200, headers)
+			shutil.copyfileobj(response, handler.wfile)
 	
 	def _create_uploads_feed(self, channel_id, audio_only):
 		channel = self._gateway.service.get_channel_by_id_or_username(channel_id, ['contentDetails', 'snippet'])
@@ -303,25 +314,17 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 		
 		return _Feed(title, description, elements, thumbnail_url)
 	
-	def _handle_media_request(self, handler, file : _File):
-		range_header = handler.headers.get('Range')
+	def _create_video(self, video, audio_only, date = None):
+		if date is None:
+			date = isodate.parse_datetime(video.snippet.publishedAt)
 		
-		if range_header is not None:
-			self.log('Request for video {}.', file.video_id)
-		else:
-			self.log('Request for range {} of video {}.', range_header, file.video_id)
+		title = video.snippet.title
+		description = video.snippet.description
+		author = video.snippet.channelTitle
+		duration = isodate.parse_duration(video.contentDetails.duration)
+		file = self._gateway.file_factory.get_file(video.id, audio_only)
 		
-		request = urllib.request.Request(file.download_url)
-		
-		if range_header is not None:
-			request.add_header('Range', range_header)
-		
-		with urllib.request.urlopen(request) as response:
-			header_names = ['Content-Type', 'Content-Length', 'Content-Range', 'Accept-Ranges']
-			headers = { k: response.headers[k] for k in header_names }
-			
-			self._send_headers(handler, 200, headers)
-			shutil.copyfileobj(response, handler.wfile)
+		return _Video(title, description, author, date, duration, file)
 	
 	@classmethod
 	def _parse_path(cls, path):
