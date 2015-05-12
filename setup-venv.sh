@@ -25,4 +25,4 @@ PYTHON_COMMAND=$(find_command python{3{.{5,4,3,2},},})
 rm -rf venv
 "$VIRTUALENV_COMMAND" -p "$PYTHON_COMMAND" venv
 . venv/bin/activate
-pip install google-api-python-client isodate pytz
+pip install google-api-python-client isodate pytz youtube_dl
