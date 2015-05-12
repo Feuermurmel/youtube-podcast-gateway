@@ -48,13 +48,7 @@ class _File:
 		raise Exception('None of the requested formats are available.')
 	
 	def _get_url_for_format(self, format):
-		youtube_dl_command = 'youtube-dl'
-		youtube_dl_path = os.path.join(env.get_script_dir(), youtube_dl_command)
-		
-		if os.path.exists(youtube_dl_path):
-			youtube_dl_command = youtube_dl_path
-		
-		process = subprocess.Popen([youtube_dl_command, '-g', '-f', str(format), 'http://www.youtube.com/watch?v={}'.format(self.video_id)], stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+		process = subprocess.Popen(['youtube-dl', '-g', '-f', str(format), 'http://www.youtube.com/watch?v={}'.format(self.video_id)], stdout = subprocess.PIPE, stderr = subprocess.PIPE)
 		stdout, stderr = process.communicate()
 		
 		if process.returncode:
