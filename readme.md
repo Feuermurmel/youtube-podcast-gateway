@@ -40,6 +40,8 @@ Successfully installed google-api-python-client isodate pytz youtube-dl httplib2
 Cleaning up...
 ```
 
+There are normally some warnings of the form `warning: no files found matching`, you can safely ignore them. If the last two lines look like the example above, the setup was successful.
+
 
 ### Creating a YouTube API key and access token.
 
