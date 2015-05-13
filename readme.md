@@ -120,14 +120,17 @@ Here, `PLbQ-gSLYQEc4Ah-5yF3IH29er13oJs_Xy` is the ID of a playlist. `WL` is the 
 
 ## Configuration
 
-Some settings can be configured by creating a file `settings.sh` in the root directory of the application. These are settings that can be adjusted, showing their default values:
+Some settings can be configured by creating a file `settings.sh` in the root directory of the application. This is an example configuration file showing the settings that can be adjusted:
 
 ```sh
-# Host name or IP address to listen on.
-http_listen_address=0.0.0.0 # All interfaces.
+# Host name or IP address to listen on. Defaults to listening all interfaces.
+http_listen_address=0.0.0.0
 
-# Local port to listen on.
+# Local port to listen on. Defaults to 8080.
 http_listen_port=8080
+
+# Maximum number of episodes to fetch for a single feed. Defaults to no limit.
+max_episode_count=20
 ```
 
 The settings file is actually just a shell script sourced from a `bash` session. The variables can be set in any way supported by bash and the values can e.g. computed dynamically.

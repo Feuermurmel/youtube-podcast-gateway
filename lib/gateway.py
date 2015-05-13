@@ -5,6 +5,7 @@ import lib.easy.xml
 
 _http_listen_address_key = config.Key('http_listen_address', str, '')
 _http_listen_port_key = config.Key('http_listen_port', int, 8080)
+_max_episode_count_key = config.Key('max_episode_count', int)
 
 
 class Configuration:
@@ -169,7 +170,8 @@ class _Feed:
 
 
 class Gateway:
-	def __init__(self, configuration : config.Configuration):
+	def __init__(self, settings : config.Configuration):
+		self.max_episode_count = settings.get(_max_episode_count_key)
 		self.service = youtube.YouTube.get_authenticated_instance()
 		self.file_factory = _FileFactory(self)
 		self._request_counter = 0
@@ -183,8 +185,8 @@ class Gateway:
 		class _Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
 			pass
 		
-		listen_address = configuration.get(_http_listen_address_key)
-		listen_port = configuration.get(_http_listen_port_key)
+		listen_address = settings.get(_http_listen_address_key)
+		listen_port = settings.get(_http_listen_port_key)
 		
 		self.server = _Server((listen_address, listen_port), Handler)
 	
@@ -300,7 +302,7 @@ class _RequestHandler(http.server.SimpleHTTPRequestHandler):
 		title = 'Uploads by {}'.format(channel.snippet.title)
 		description = channel.snippet.description
 		thumbnail_url = self.find_best_thumbnail_url(channel.snippet.thumbnails)
-		uploads = self._gateway.service.get_channel_videos(channel.id, 'id')
+		uploads = self._gateway.service.get_channel_videos(channel.id, 'id', max_results = self._gateway.max_episode_count)
 		video_ids = [i.id.videoId for i in uploads]
 		videos = self._gateway.service.get_videos(video_ids, ['contentDetails', 'snippet'])
 		elements = [self._create_video(i, audio_only) for i in videos]
@@ -316,6 +318,11 @@ class _RequestHandler(http.server.SimpleHTTPRequestHandler):
 		playlist_items = self._gateway.service.get_playlist_items(playlist_id, 'snippet')
 		playlist_items_by_video_id = { i.snippet.resourceId.videoId: i for i in playlist_items if i.snippet.resourceId.kind == 'youtube#video' }
 		video_ids = list(playlist_items_by_video_id)
+		
+		# We need to truncate the list here because we have to get the full list of video IDs because we want to return the videos most recently added to the playlist.
+		if self._gateway.max_episode_count is not None:
+			del video_ids[:-self._gateway.max_episode_count]
+		
 		videos = self._gateway.service.get_videos(video_ids, ['contentDetails', 'snippet'])
 		elements = [self._create_video(i, audio_only, isodate.parse_datetime(playlist_items_by_video_id[i.id].snippet.publishedAt)) for i in videos]
 		

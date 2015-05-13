@@ -44,7 +44,7 @@ class _Item:
 
 
 class YouTube:
-	_max_results = 50
+	_max_results_per_request = 50
 	
 	def __init__(self, service):
 		self._service = service
@@ -76,8 +76,8 @@ class YouTube:
 	def get_playlist_items(self, playlist_id, part):
 		return self._get(self._service.playlistItems(), part, playlistId = playlist_id)
 	
-	def get_channel_videos(self, channelId, part, order = 'date'):
-		return self._get(self._service.search(), part, channelId = channelId, order = order, type = 'video')
+	def get_channel_videos(self, channelId, part, order = 'date', max_results = None):
+		return self._get(self._service.search(), part, channelId = channelId, order = order, type = 'video', max_results = max_results)
 	
 	def get_videos(self, video_id, part):
 		return self._get(self._service.videos(), part, id = video_id)
@@ -87,15 +87,17 @@ class YouTube:
 		return cls(_get_authenticated_service(_api_name, _api_version, _auth_scope))
 	
 	@classmethod
-	def _get(cls, resource, part, *, id = None, **kwargs):
+	def _get(cls, resource, part, *, id = None, max_results = None, **kwargs):
+		assert id is None or max_results is None
+		
 		if isinstance(part, list):
 			part = ','.join(part)
 		
 		if id is None:
-			items = cls._get_raw(resource, part, **kwargs)
+			items = cls._get_raw(resource, part, max_results, **kwargs)
 		else:
 			if isinstance(id, list):
-				items = [j for i in range(0, len(id), cls._max_results) for j in cls._get_raw(resource, part, id = ','.join(id[i:i + cls._max_results]), **kwargs)]
+				items = [j for i in range(0, len(id), cls._max_results_per_request) for j in cls._get_raw(resource, part, id = ','.join(id[i:i + cls._max_results_per_request]), **kwargs)]
 			else:
 				items = cls._get_raw(resource, part, id = id, **kwargs)
 		
@@ -113,24 +115,29 @@ class YouTube:
 				return None
 	
 	@classmethod
-	def _get_raw(cls, resource, part, **kwargs):
-		def iter_items():
-			request = resource.list(part = part, maxResults = cls._max_results, **kwargs)
-			
-			while request:
-				util.log('Requesting {} ...', request.uri)
-				
-				response = request.execute()
-				
-				yield from response.get("items", [])
-				
-				request = resource.list_next(request, response)
+	def _get_raw(cls, resource, part, max_results = None, **kwargs):
+		if max_results is not None and max_results < cls._max_results_per_request:
+			max_results_per_request = max_results
+		else:
+			max_results_per_request = cls._max_results_per_request
 		
-		try:
-			return [_Item.wrap_json(i) for i in iter_items()]
-		except googleapiclient.http.HttpError as e:
-			# The HttpError class is currently broken and does not decode the received data before parsing it. 
-			if isinstance(e.content, bytes):
-				e.content = e.content.decode()
+		results = []
+		request = resource.list(part = part, maxResults = max_results_per_request, **kwargs)
+		
+		while request and (max_results is None or len(results) < max_results):
+			util.log('Requesting {} ...', request.uri)
 			
-			raise
+			try:
+				response = request.execute()
+			except googleapiclient.http.HttpError as e:
+				# The HttpError class is currently broken and does not decode the received data before parsing it. 
+				if isinstance(e.content, bytes):
+					e.content = e.content.decode()
+				
+				raise
+			
+			results.extend(map(_Item.wrap_json, response.get('items', [])))
+			
+			request = resource.list_next(request, response)
+		
+		return results[:max_results]
