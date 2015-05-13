@@ -1,6 +1,16 @@
 import os, urllib.request, datetime, socketserver, http.server, shutil, email, subprocess, socket, pytz, sys, isodate, threading
-from . import env, util, youtube
+from . import env, util, youtube, config
 import lib.easy.xml
+
+
+_http_listen_address_key = config.Key('http_listen_address', str, '')
+_http_listen_port_key = config.Key('http_listen_port', int, 8080)
+
+
+class Configuration:
+	def __init__(self, max_episode_count, http_listen_address, http_listen_port):
+		self.max_episode_count = max_episode_count
+		self.http_listen_address = http_listen_address
 
 
 class _File:
@@ -159,7 +169,7 @@ class _Feed:
 
 
 class Gateway:
-	def __init__(self, port = 8080):
+	def __init__(self, configuration : config.Configuration):
 		self.service = youtube.YouTube.get_authenticated_instance()
 		self.file_factory = _FileFactory(self)
 		self._request_counter = 0
@@ -173,7 +183,10 @@ class Gateway:
 		class _Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
 			pass
 		
-		self.server = _Server(('', port), Handler)
+		listen_address = configuration.get(_http_listen_address_key)
+		listen_port = configuration.get(_http_listen_port_key)
+		
+		self.server = _Server((listen_address, listen_port), Handler)
 	
 	def get_next_request_id(self):
 		with self._request_counter_lock:
