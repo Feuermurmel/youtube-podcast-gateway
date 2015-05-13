@@ -107,7 +107,7 @@ https://www.youtube.com/user/CGPGrey
 Here, `UCOGeU-1Fig3rrDjhm9Zs_wg` is the channel ID of a channel and `CGPGrey` is the username of another channel. Either can be used in place of `<channel-id>`
 
 
-# Subscribing to a playlist
+### Subscribing to a playlist
 
 <playlist-id> is the ID of the playlist to subscribe to. For example:
 
@@ -116,3 +116,18 @@ https://www.youtube.com/playlist?list=PLbQ-gSLYQEc4Ah-5yF3IH29er13oJs_Xy
 ```
 
 Here, `PLbQ-gSLYQEc4Ah-5yF3IH29er13oJs_Xy` is the ID of a playlist. `WL` is the ID of *your* watch later playlist, if you want to subscribe to it.
+
+
+## Configuration
+
+Some settings can be configured by creating a file `settings.sh` in the root directory of the application. These are settings that can be adjusted, showing their default values:
+
+```sh
+# Host name or IP address to listen on.
+http_listen_address=0.0.0.0 # All interfaces.
+
+# Local port to listen on.
+http_listen_port=8080
+```
+
+The settings file is actually just a shell script sourced from a `bash` session. The variables can be set in any way supported by bash and the values can e.g. computed dynamically.
