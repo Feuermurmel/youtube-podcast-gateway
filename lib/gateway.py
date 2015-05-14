@@ -1,4 +1,4 @@
-import os, urllib.request, datetime, socketserver, http.server, shutil, email, subprocess, socket, pytz, sys, isodate, threading
+import urllib.request, datetime, socketserver, http.server, shutil, email, subprocess, socket, pytz, sys, isodate, threading
 from . import env, util, youtube, config
 import lib.easy.xml
 
@@ -210,7 +210,28 @@ class _RequestHandler(http.server.SimpleHTTPRequestHandler):
 		super().__init__(*args)
 	
 	def do_GET(self):
-		self._handle_request(self)
+		self.log('Handling request for {} ...', self.path)
+		
+		try:
+			path, args = self._parse_path(self.path)
+			
+			if path:
+				type, *rest = path
+				
+				if type == 'audio':
+					self._handle_media_request(self._gateway.file_factory.get_file(rest[0], True))
+				elif type == 'video':
+					self._handle_media_request(self._gateway.file_factory.get_file(rest[0], False))
+				else:
+					audio_only = args.get('audio') == 'true'
+					
+					self._handle_feed_request(type, rest[0], audio_only)
+			else:
+				self._send_headers(404)
+		except socket.error as e:
+			self.log('Connection was closed: {}', e)
+		except Exception:
+			sys.excepthook(*sys.exc_info())
 	
 	def log_message(self, format, *args):
 		pass
@@ -218,49 +239,25 @@ class _RequestHandler(http.server.SimpleHTTPRequestHandler):
 	def log(self, message, *args):
 		util.log('[{}]: {}', self._request_id, message.format(*args))
 	
-	def _handle_request(self, handler : http.server.SimpleHTTPRequestHandler):
-		self.log('Handling request for {} ...', handler.path)
-		
-		try:
-			path, args = self._parse_path(handler.path)
-			
-			if path:
-				type, *rest = path
-				
-				if type == 'audio':
-					self._handle_media_request(handler, self._gateway.file_factory.get_file(rest[0], True))
-				elif type == 'video':
-					self._handle_media_request(handler, self._gateway.file_factory.get_file(rest[0], False))
-				else:
-					audio_only = args.get('audio') == 'true'
-					
-					self._handle_feed_request(handler, type, rest[0], audio_only)
-			else:
-				self._send_headers(handler, 404)
-		except socket.error as e:
-			self.log('Connection was closed: {}', e)
-		except Exception:
-			sys.excepthook(*sys.exc_info())
-	
-	def _send_headers(self, handler, code, headers = { }):
-		handler.send_response(code)
+	def _send_headers(self, code, headers = { }):
+		self.send_response(code)
 		
 		for k, v in headers.items():
-			handler.send_header(k, v)
+			self.send_header(k, v)
 		
-		handler.end_headers()
+		self.end_headers()
 		
 		self.log('Returned status {}.', code)
 	
-	def _get_base_url(self, handler):
-		host_header = handler.headers['Host']
+	def _get_base_url(self):
+		host_header = self.headers['Host']
 		
 		if host_header:
 			return 'http://{}'.format(host_header)
 		else:
 			return 'http://{}:{}'.format(env.local_address_best_guess(), self._gateway.server.server_port)
 	
-	def _handle_feed_request(self, handler, type, id, audio_only):
+	def _handle_feed_request(self, type, id, audio_only):
 		feeds_by_type = {
 			'uploads': self._create_uploads_feed,
 			'playlist': self._create_playlist_feed }
@@ -268,18 +265,18 @@ class _RequestHandler(http.server.SimpleHTTPRequestHandler):
 		feed_type = feeds_by_type.get(type)
 		
 		if feed_type is None:
-			self._send_headers(handler, 404)
+			self._send_headers(404)
 		else:
-			base_url = self._get_base_url(handler)
+			base_url = self._get_base_url()
 			feed = feed_type(id, audio_only)
 			doc = feed.make_podcast_feed_elem(base_url)
 			
-			self._send_headers(handler, 200, { 'content-type': 'application/atom+xml; charset=utf-8' })
+			self._send_headers(200, { 'content-type': 'application/atom+xml; charset=utf-8' })
 			
-			handler.wfile.write(str(doc).encode())
+			self.wfile.write(str(doc).encode())
 	
-	def _handle_media_request(self, handler, file : _File):
-		range_header = handler.headers.get('Range')
+	def _handle_media_request(self, file : _File):
+		range_header = self.headers.get('Range')
 		
 		if range_header is not None:
 			self.log('Request for video {}.', file.video_id)
@@ -295,16 +292,17 @@ class _RequestHandler(http.server.SimpleHTTPRequestHandler):
 			header_names = ['Content-Type', 'Content-Length', 'Content-Range', 'Accept-Ranges']
 			headers = { k: response.headers[k] for k in header_names }
 			
-			self._send_headers(handler, 200, headers)
-			shutil.copyfileobj(response, handler.wfile)
+			self._send_headers(200, headers)
+			shutil.copyfileobj(response, self.wfile)
 	
 	def _create_uploads_feed(self, channel_id, audio_only):
-		channel = self._gateway.service.get_channel_by_id_or_username(channel_id, ['contentDetails', 'snippet'])
+		channel = self._gateway.service.get_channel_by_id_or_username(channel_id, 'snippet')
 		title = 'Uploads by {}'.format(channel.snippet.title)
 		description = channel.snippet.description
 		thumbnail_url = self.find_best_thumbnail_url(channel.snippet.thumbnails)
-		playlist_items = self._gateway.service.get_playlist_items(channel.contentDetails.relatedPlaylists.uploads, 'contentDetails')
-		videos = self._gateway.service.get_videos([i.contentDetails.videoId for i in playlist_items], ['contentDetails', 'snippet'])
+		uploads = self._gateway.service.get_channel_videos(channel.id, 'id')
+		video_ids = [i.id.videoId for i in uploads]
+		videos = self._gateway.service.get_videos(video_ids, ['contentDetails', 'snippet'])
 		elements = [self._create_video(i, audio_only) for i in videos]
 		
 		return _Feed(title, description, elements, thumbnail_url)
@@ -315,8 +313,10 @@ class _RequestHandler(http.server.SimpleHTTPRequestHandler):
 		description = playlist.snippet.description
 		channel = self._gateway.service.get_channels(playlist.snippet.channelId, 'snippet')
 		thumbnail_url = self.find_best_thumbnail_url(channel.snippet.thumbnails)
-		playlist_items_by_video_id = { i.snippet.resourceId.videoId: i for i in self._gateway.service.get_playlist_items(playlist_id, 'snippet') if i.snippet.resourceId.kind == 'youtube#video' }
-		videos = self._gateway.service.get_videos(list(playlist_items_by_video_id), ['contentDetails', 'snippet'])
+		playlist_items = self._gateway.service.get_playlist_items(playlist_id, 'snippet')
+		playlist_items_by_video_id = { i.snippet.resourceId.videoId: i for i in playlist_items if i.snippet.resourceId.kind == 'youtube#video' }
+		video_ids = list(playlist_items_by_video_id)
+		videos = self._gateway.service.get_videos(video_ids, ['contentDetails', 'snippet'])
 		elements = [self._create_video(i, audio_only, isodate.parse_datetime(playlist_items_by_video_id[i.id].snippet.publishedAt)) for i in videos]
 		
 		return _Feed(title, description, elements, thumbnail_url)
@@ -356,4 +356,3 @@ class _RequestHandler(http.server.SimpleHTTPRequestHandler):
 				return thumbnail_item.url
 		
 		return None
-	

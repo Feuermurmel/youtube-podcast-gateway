@@ -1,4 +1,4 @@
-import httplib2, apiclient.discovery, oauth2client.client, oauth2client.file, oauth2client.tools
+import httplib2, apiclient.discovery, oauth2client.client, oauth2client.file, oauth2client.tools, googleapiclient.http
 from lib import util
 
 
@@ -71,13 +71,16 @@ class YouTube:
 		return self._get(self._service.channels(), part, id = channel_id)
 	
 	def get_playlists(self, playlist_id, part):
-		return self._get(self._service.playlists(), part = part, id = playlist_id)
+		return self._get(self._service.playlists(), part, id = playlist_id)
 	
 	def get_playlist_items(self, playlist_id, part):
-		return self._get(self._service.playlistItems(), part = part, playlistId = playlist_id)
+		return self._get(self._service.playlistItems(), part, playlistId = playlist_id)
+	
+	def get_channel_videos(self, channelId, part, order = 'date'):
+		return self._get(self._service.search(), part, channelId = channelId, order = order, type = 'video')
 	
 	def get_videos(self, video_id, part):
-		return self._get(self._service.videos(), part = part, id = video_id)
+		return self._get(self._service.videos(), part, id = video_id)
 	
 	@classmethod
 	def get_authenticated_instance(cls):
