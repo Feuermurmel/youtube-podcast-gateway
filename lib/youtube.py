@@ -123,4 +123,11 @@ class YouTube:
 				
 				request = resource.list_next(request, response)
 		
-		return [_Item.wrap_json(i) for i in iter_items()]
+		try:
+			return [_Item.wrap_json(i) for i in iter_items()]
+		except googleapiclient.http.HttpError as e:
+			# The HttpError class is currently broken and does not decode the received data before parsing it. 
+			if isinstance(e.content, bytes):
+				e.content = e.content.decode()
+			
+			raise
