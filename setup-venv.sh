@@ -13,7 +13,7 @@ find_command() {
 	done
 	
 	echo "None of these commands found: $@" >&2
-	fail
+	exit 1
 }
 
 # It seems that maintainers can't agree on the name of the virtualenv binary.
