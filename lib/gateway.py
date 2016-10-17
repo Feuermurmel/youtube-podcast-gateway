@@ -316,15 +316,21 @@ class _RequestHandler(http.server.SimpleHTTPRequestHandler):
 		channel = self._gateway.service.get_channels(playlist.snippet.channelId, 'snippet')
 		thumbnail_url = self.find_best_thumbnail_url(channel.snippet.thumbnails)
 		playlist_items = self._gateway.service.get_playlist_items(playlist_id, 'snippet')
-		playlist_items_by_video_id = { i.snippet.resourceId.videoId: i for i in playlist_items if i.snippet.resourceId.kind == 'youtube#video' }
-		video_ids = list(playlist_items_by_video_id)
 		
 		# We need to truncate the list here because we have to get the full list of video IDs because we want to return the videos most recently added to the playlist.
 		if self._gateway.max_episode_count is not None:
-			del video_ids[:-self._gateway.max_episode_count]
+			del playlist_items[:-self._gateway.max_episode_count]
 		
-		videos = self._gateway.service.get_videos(video_ids, ['contentDetails', 'snippet'])
-		elements = [self._create_video(i, audio_only, isodate.parse_datetime(playlist_items_by_video_id[i.id].snippet.publishedAt)) for i in videos]
+		videos = self._gateway.service.get_videos(
+			[i.snippet.resourceId.videoId for i in playlist_items],
+			['contentDetails', 'snippet'])
+		
+		elements = [
+			self._create_video(
+				v,
+				audio_only,
+				isodate.parse_datetime(p.snippet.publishedAt))
+			for p, v in zip(playlist_items, videos)]
 		
 		return _Feed(title, description, elements, thumbnail_url)
 	
