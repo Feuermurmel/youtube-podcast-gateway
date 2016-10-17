@@ -29,7 +29,7 @@ After checking out the `master` branch of this repository, the application can b
 To set up the virtualenv, run `./setup-venv.sh`:
 
 ```
-$ charm ./setup-venv.sh 
+$ ./setup-venv.sh 
 Running virtualenv with interpreter /opt/local/bin/python3.4
 Using base prefix '/opt/local/Library/Frameworks/Python.framework/Versions/3.4'
 New python executable in venv/bin/python3.4
