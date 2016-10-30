@@ -1,4 +1,4 @@
-import httplib2, apiclient.discovery, oauth2client.client, oauth2client.file, oauth2client.tools, googleapiclient.http
+import threading, httplib2, apiclient.discovery, oauth2client.client, oauth2client.file, oauth2client.tools, googleapiclient.http
 from lib import util
 
 
@@ -48,6 +48,7 @@ class YouTube:
 	
 	def __init__(self, service):
 		self._service = service
+		self._service_lock = threading.Lock()
 	
 	def get_channel_by_id_or_username(self, channel_id_or_username, part):
 		channel = self.get_channels(channel_id_or_username, part)
@@ -86,20 +87,20 @@ class YouTube:
 	def get_authenticated_instance(cls):
 		return cls(_get_authenticated_service(_api_name, _api_version, _auth_scope))
 	
-	@classmethod
-	def _get(cls, resource, part, *, id = None, max_results = None, **kwargs):
+	def _get(self, resource, part, *, id = None, max_results = None, **kwargs):
 		assert id is None or max_results is None
 		
 		if isinstance(part, list):
 			part = ','.join(part)
 		
-		if id is None:
-			items = cls._get_raw(resource, part, max_results, **kwargs)
-		else:
-			if isinstance(id, list):
-				items = [j for i in range(0, len(id), cls._max_results_per_request) for j in cls._get_raw(resource, part, id = ','.join(id[i:i + cls._max_results_per_request]), **kwargs)]
+		with self._service_lock:
+			if id is None:
+				items = self._get_raw(resource, part, max_results, **kwargs)
 			else:
-				items = cls._get_raw(resource, part, id = id, **kwargs)
+				if isinstance(id, list):
+					items = [j for i in range(0, len(id), self._max_results_per_request) for j in self._get_raw(resource, part, id = ','.join(id[i:i + self._max_results_per_request]), **kwargs)]
+				else:
+					items = self._get_raw(resource, part, id = id, **kwargs)
 		
 		if isinstance(id, list) or id is None:
 			return items
