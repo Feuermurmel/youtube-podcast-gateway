@@ -273,9 +273,12 @@ class _RequestHandler(http.server.SimpleHTTPRequestHandler):
 			feed = feed_type(id, audio_only)
 			doc = feed.make_podcast_feed_elem(base_url)
 			
+			# Add a newline at the end for saner debugging with curl.
+			data = (str(doc) + '\n').encode()
+			
 			self._send_headers(200, { 'content-type': 'application/atom+xml; charset=utf-8' })
 			
-			self.wfile.write(str(doc).encode())
+			self.wfile.write(data)
 	
 	def _handle_media_request(self, file : _File):
 		range_header = self.headers.get('Range')
