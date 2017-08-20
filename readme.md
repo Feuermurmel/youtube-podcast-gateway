@@ -115,7 +115,7 @@ Here, `UCOGeU-1Fig3rrDjhm9Zs_wg` is the channel ID of a channel and `CGPGrey` is
 https://www.youtube.com/playlist?list=PLbQ-gSLYQEc4Ah-5yF3IH29er13oJs_Xy
 ```
 
-Here, `PLbQ-gSLYQEc4Ah-5yF3IH29er13oJs_Xy` is the ID of a playlist. `WL` is the ID of *your* watch later playlist, if you want to subscribe to it.
+Here, `PLbQ-gSLYQEc4Ah-5yF3IH29er13oJs_Xy` is the ID of a playlist.
 
 
 ## Configuration
