@@ -26,21 +26,15 @@ After checking out the `master` branch of this repository, the application can b
 
 ### Setting up the virtualenv
 
-To set up the virtualenv, run `./setup-venv.sh`:
+To set up a virtualenv with the necessary requirements, run th following commands:
 
-```
-$ ./setup-venv.sh 
-Running virtualenv with interpreter /opt/local/bin/python3.4
-Using base prefix '/opt/local/Library/Frameworks/Python.framework/Versions/3.4'
-New python executable in venv/bin/python3.4
-Also creating executable in venv/bin/python
-Installing setuptools, pip...done.
-[...]
-Successfully installed google-api-python-client isodate pytz youtube-dl httplib2 oauth2client six uritemplate pyasn1 pyasn1-modules rsa simplejson
-Cleaning up...
-```
+    $ python3 -m venv venv
+    $ . venv/bin/activate
+    $ pip install -r requirements.txt 
+    [...]
+    Successfully installed google-api-python-client-1.6.3 httplib2-0.10.3 isodate-0.5.4 oauth2client-4.1.2 pyasn1-0.3.3 pyasn1-modules-0.1.1 pytz-2017.2 rsa-3.4.2 six-1.10.0 uritemplate-3.0.0 youtube-dl-2017.8.27.1
 
-There are normally some warnings of the form `warning: no files found matching`, you can safely ignore them. If the last two lines look like the example above, the setup was successful.
+There may be some warnings of the form `warning: no files found matching`, you can safely ignore them. If the last two lines look like the example above, the setup was successful.
 
 
 ### Creating a YouTube API key and access token.
