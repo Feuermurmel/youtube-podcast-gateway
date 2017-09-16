@@ -6,23 +6,23 @@ import oauth2client.file
 import oauth2client.tools
 import threading
 
-from youtube_podcast_gateway import util
+from . import util, config
 
 
 _api_name = 'youtube'
 _api_version = 'v3'
 _auth_scope = 'https://www.googleapis.com/auth/youtube.readonly'
 
-_client_secrets_path = "client_secrets.json"
-_oauth2_token_path = 'oauth2_token.json'
+_client_secrets_path_key = config.Key('client_secrets_path', str, 'client_secrets.json')
+_oauth2_token_path_key = config.Key('oauth2_token_path', str, 'oauth2_token.json')
 
 
-def _get_authenticated_service(api_name, api_version, auth_scope):
+def _get_authenticated_service(api_name, api_version, auth_scope, client_secrets_path, oauth2_token_path):
     flow = oauth2client.client.flow_from_clientsecrets(
-        _client_secrets_path,
+        client_secrets_path,
         scope=auth_scope)
 
-    storage = oauth2client.file.Storage(_oauth2_token_path)
+    storage = oauth2client.file.Storage(oauth2_token_path)
     credentials = storage.get()
 
     if credentials is None or credentials.invalid:
@@ -104,8 +104,15 @@ class YouTube:
         return self._get(self._service.videos(), part, id=video_id)
 
     @classmethod
-    def get_authenticated_instance(cls):
-        return cls(_get_authenticated_service(_api_name, _api_version, _auth_scope))
+    def get_authenticated_instance(cls, settings: config.Configuration):
+        service = _get_authenticated_service(
+            _api_name,
+            _api_version,
+            _auth_scope,
+            settings.get(_client_secrets_path_key),
+            settings.get(_oauth2_token_path_key))
+
+        return cls(service)
 
     def _get(self, resource, part, *, id=None, max_results=None, **kwargs):
         assert id is None or max_results is None

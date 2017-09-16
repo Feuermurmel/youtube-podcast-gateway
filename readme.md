@@ -125,3 +125,7 @@ __http_listen_address__: Host name or IP address to listen on. Defaults to liste
 __http_listen_port__: Local port to listen on. Defaults to `8080`.
 
 __max_episode_count__: Maximum number of episodes to fetch for a single feed. Defaults to no limit.
+
+__client_secrets_path__: Path to the `client_secrets.json` file downloaded from the Google Developer Console. Defaults to `client_secrets.json`.
+
+__oauth2_token_path__: Path to the `oauth2_token.json` file which stores the OAuth 2 authorization tokes. Defaults to `oauth2_token.json`. 

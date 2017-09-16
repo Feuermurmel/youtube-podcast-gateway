@@ -191,7 +191,7 @@ class _Feed:
 class Gateway:
     def __init__(self, settings: config.Configuration):
         self.max_episode_count = settings.get(_max_episode_count_key)
-        self.service = youtube.YouTube.get_authenticated_instance()
+        self.service = youtube.YouTube.get_authenticated_instance(settings)
         self.file_factory = _FileFactory(self)
         self._request_counter = 0
         self._request_counter_lock = threading.Lock()
