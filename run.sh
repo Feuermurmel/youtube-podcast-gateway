@@ -10,7 +10,7 @@ cd "$(dirname "$BASH_SOURCE")"
 options=()
 
 for i in http_listen_address http_listen_port max_episode_count; do
-	options=("${options[@]}" "$i=${!i}")
+    options=("${options[@]}" "$i=${!i}")
 done
 
 python . "${options[@]}"
