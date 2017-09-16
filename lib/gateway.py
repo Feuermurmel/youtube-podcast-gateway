@@ -21,12 +21,6 @@ _http_listen_port_key = config.Key('http_listen_port', int, 8080)
 _max_episode_count_key = config.Key('max_episode_count', int)
 
 
-class Configuration:
-    def __init__(self, max_episode_count, http_listen_address, http_listen_port):
-        self.max_episode_count = max_episode_count
-        self.http_listen_address = http_listen_address
-
-
 class _File:
     def __init__(self, gateway, video_id, audio_only):
         self.gateway = gateway
