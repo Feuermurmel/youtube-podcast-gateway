@@ -19,9 +19,7 @@ You will need the following, if you want to use this application:
 
 ## Setup
 
-After checking out the `master` branch of this repository, the application can be run directly. There is no installation necessary [0]. Instead, all dependencies are installed into a Python virtualenv and the application is run using the virtualenv's `python` binary.
-
-[0]: Installation using a `setup.py` script could probably be added easily.
+To use the application, you will have to install it using `pip` either into a virtualenv or globally. The instructions below are for installing into a virtualenv.
 
 
 ### Setting up the virtualenv
@@ -30,11 +28,11 @@ To set up a virtualenv with the necessary requirements, run th following command
 
     $ python3 -m venv venv
     $ . venv/bin/activate
-    $ pip install -r requirements.txt 
+    $ pip install git+https://github.com/Feuermurmel/youtube-podcast-gateway.git
     [...]
-    Successfully installed google-api-python-client-1.6.3 httplib2-0.10.3 isodate-0.5.4 oauth2client-4.1.2 pyasn1-0.3.3 pyasn1-modules-0.1.1 pytz-2017.2 rsa-3.4.2 six-1.10.0 uritemplate-3.0.0 youtube-dl-2017.8.27.1
+    Successfully installed google-api-python-client-1.6.4 httplib2-0.10.3 isodate-0.5.4 oauth2client-4.1.2 pyasn1-0.3.6 pyasn1-modules-0.1.4 pytz-2017.2 rsa-3.4.2 six-1.11.0 uritemplate-3.0.0 youtube-dl-2017.9.24 youtube-podcast-gateway-0.1
 
-There may be some warnings of the form `warning: no files found matching`, you can safely ignore them. If the last two lines look like the example above, the setup was successful.
+If the last two lines look like the example above, the setup was successful.
 
 
 ### Creating a YouTube API key and access token.
@@ -45,10 +43,10 @@ Go to the (Google Developer Console)[https://console.developers.google.com] and 
 
 Then, go to **APIs & Auth** > **Credentials** and create an OAuth 2.0 Client ID. For the **Application type**, choose **Installed application** and for **Installed application type**, choose **Other**. After creating the key, click **Download JSON**. This will download a JSON file. Rename the file to `client_secrets.json` and put it in the root directory of the application.
 
-Now you can run the application for the first time using `./run.sh`. It should ask you to visit an web site.
+Now you can run the application for the first time using `youtube-podcast-gateway`. It should ask you to visit an web site.
 
 ```
-$ ./run.sh 
+$ youtube-podcast-gateway
 Go to the following link in your browser:
 
     https://accounts.google.com/[...]
@@ -91,7 +89,7 @@ In both cases, the assembled URI (possibly with `localhost` replaced by the host
 
 ### Subscribing to a channel
 
-`<channel-id>` is either the use name of the cannel's owner or the channel ID. YouTube currently uses both to refer to channels, depending on context. For example:
+`<channel-id>` is either the use name of the channel's owner or the channel ID. YouTube currently uses both to refer to channels, depending on context. For example:
 
 ```
 https://www.youtube.com/channel/UCOGeU-1Fig3rrDjhm9Zs_wg
@@ -114,17 +112,16 @@ Here, `PLbQ-gSLYQEc4Ah-5yF3IH29er13oJs_Xy` is the ID of a playlist.
 
 ## Configuration
 
-Some settings can be configured by creating a file `settings.sh` in the root directory of the application. This is an example configuration file showing the settings that can be adjusted:
+Some settings can be configured using the `-o` command line option. For example:
 
-```sh
-# Host name or IP address to listen on. Defaults to listening all interfaces.
-http_listen_address=0.0.0.0
-
-# Local port to listen on. Defaults to 8080.
-http_listen_port=8080
-
-# Maximum number of episodes to fetch for a single feed. Defaults to no limit.
-max_episode_count=20
+```
+$ youtube-podcast-gateway -o max_episode_count=100
 ```
 
-The settings file is actually just a shell script sourced from a `bash` session. The variables can be set in any way supported by bash and the values can e.g. computed dynamically.
+This is a list of available settings:
+
+__http_listen_address__: Host name or IP address to listen on. Defaults to listening all interfaces. Defaults to `0.0.0.0`.
+
+__http_listen_port__: Local port to listen on. Defaults to `8080`.
+
+__max_episode_count__: Maximum number of episodes to fetch for a single feed. Defaults to no limit.

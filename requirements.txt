@@ -1,4 +1,0 @@
-google-api-python-client
-isodate
-pytz
-youtube_dl
