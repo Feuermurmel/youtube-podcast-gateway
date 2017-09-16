@@ -11,7 +11,7 @@ import sys
 import threading
 import urllib.request
 
-import lib.easy.xml
+import youtube_podcast_gateway.easy.xml
 
 from . import env, util, youtube, config
 
@@ -135,7 +135,7 @@ class _Video:
             suffix = 'm4v'
             mime_type = 'video/mp4'
 
-        n = lib.easy.xml.node
+        n = youtube_podcast_gateway.easy.xml.node
         # Extension is needed so that iTunes recognizes the enclosure as a
         # media file (or something, it doesn't work otherwise).
         encoded_page_url = '{}/{}/{}.{}'.format(
@@ -169,7 +169,7 @@ class _Feed:
         return 'Feed(videos = {})'.format(self.videos)
 
     def make_podcast_feed_elem(self, base_url):
-        n = lib.easy.xml.node
+        n = youtube_podcast_gateway.easy.xml.node
 
         def channel_nodes():
             yield n('title', self.title)

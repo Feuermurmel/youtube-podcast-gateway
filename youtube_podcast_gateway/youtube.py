@@ -6,7 +6,7 @@ import oauth2client.file
 import oauth2client.tools
 import threading
 
-from lib import util
+from youtube_podcast_gateway import util
 
 
 _api_name = 'youtube'

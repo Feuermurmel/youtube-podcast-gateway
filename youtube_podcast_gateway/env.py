@@ -1,7 +1,7 @@
 import os
 import socket
 
-from lib import util
+from youtube_podcast_gateway import util
 
 
 @util.memorized

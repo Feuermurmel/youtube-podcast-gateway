@@ -174,7 +174,7 @@ def parse(str):
     """
     Parse a string into an XML document.
     """
-    from lib.easy.regex import grp, rep, opt, alt, matchone, matchall
+    from youtube_podcast_gateway.easy.regex import grp, rep, opt, alt, matchone, matchall
 
     id = '[A-Za-z_][A-Za-z0-9_:-]*'
     string = alt('"[^"]*"', "'[^']*'")
