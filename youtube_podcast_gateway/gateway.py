@@ -1,19 +1,23 @@
 import datetime
 import email
 import http.server
-import isodate
-import pytz
+import pathlib
 import shutil
 import socket
 import socketserver
 import subprocess
 import sys
+import os
 import threading
 import urllib.request
+import urllib.parse
+
+import isodate
+import pytz
 
 import youtube_podcast_gateway.easy.xml
 
-from . import env, util, youtube, config
+from . import util, youtube, config
 
 
 _http_listen_address_key = config.Key('http_listen_address', str, '')
@@ -128,21 +132,21 @@ class _Video:
     def make_podcast_entry_elem(self, base_url):
         if self.file.audio_only:
             type_fragment = 'audio'
-            suffix = 'm4a'
+            suffix = '.m4a'
             mime_type = 'audio/mp4'
         else:
             type_fragment = 'video'
-            suffix = 'm4v'
+            suffix = '.m4v'
             mime_type = 'video/mp4'
 
         n = youtube_podcast_gateway.easy.xml.node
+
         # Extension is needed so that iTunes recognizes the enclosure as a
         # media file (or something, it doesn't work otherwise).
-        encoded_page_url = '{}/{}/{}.{}'.format(
+        encoded_page_url = urllib.parse.urljoin(
             base_url,
-            type_fragment,
-            self.file.video_id,
-            suffix)
+            os.path.join(type_fragment, self.file.video_id + suffix))
+
         published = email.utils.formatdate(
             (self.published - datetime.datetime(1970, 1, 1, tzinfo=pytz.utc)) / datetime.timedelta(seconds=1))
 
@@ -234,21 +238,29 @@ class _RequestHandler(http.server.SimpleHTTPRequestHandler):
         self.log('Handling request for {} ...', self.path)
 
         try:
-            path, args = self._parse_path(self.path)
+            parts = urllib.parse.urlsplit(self.path)
 
-            if path:
-                type, *rest = path
+            # Strip the / at the start.
+            _, *path_parts = pathlib.PurePosixPath(parts.path).parts
+            query = urllib.parse.parse_qs(parts.query)
+
+            if len(path_parts) == 2:
+                type, id = path_parts
+
+                # Allow flexibility in URLs by ignoring any file name
+                # extensions.
+                id, *_ = id.split('.', 1)
 
                 if type == 'audio':
                     self._handle_media_request(
-                        self._gateway.file_factory.get_file(rest[0], True))
+                        self._gateway.file_factory.get_file(id, True))
                 elif type == 'video':
                     self._handle_media_request(
-                        self._gateway.file_factory.get_file(rest[0], False))
+                        self._gateway.file_factory.get_file(id, False))
                 else:
-                    audio_only = args.get('audio') == 'true'
+                    audio_only = query.get('audio') == 'true'
 
-                    self._handle_feed_request(type, rest[0], audio_only)
+                    self._handle_feed_request(type, id, audio_only)
             else:
                 self._send_headers(404)
         except socket.error as e:
@@ -369,21 +381,6 @@ class _RequestHandler(http.server.SimpleHTTPRequestHandler):
         file = self._gateway.file_factory.get_file(video.id, audio_only)
 
         return _Video(title, description, author, date, duration, file)
-
-    @classmethod
-    def _parse_path(cls, path):
-        path, *args = path.split('?', 1)
-        path = [i for i in path.split('/') if i]
-        # Allow flexibility in URLs by ignoring any file name extensions
-        path[-1] = path[-1].rsplit('.', 1)[0]
-
-        if args:
-            args, = args
-            args = dict(i.split('=', 1) for i in args.split('&'))
-        else:
-            args = {}
-
-        return path, args
 
     @classmethod
     def find_best_thumbnail_url(cls, thumbnails):
