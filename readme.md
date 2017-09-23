@@ -129,3 +129,5 @@ __max_episode_count__: Maximum number of episodes to fetch for a single feed. De
 __client_secrets_path__: Path to the `client_secrets.json` file downloaded from the Google Developer Console. Defaults to `client_secrets.json`.
 
 __oauth2_token_path__: Path to the `oauth2_token.json` file which stores the OAuth 2 authorization tokes. Defaults to `oauth2_token.json`. 
+
+__canonical_base_url__: Base URL of the application which is used to generate URLs to the media files embedded in the feeds. This URL should point to the `/` path of the HTTP server run by the application. By default the base URI is guessed from the `Host:` header sent by a client and the port the HTTP server is listening on.

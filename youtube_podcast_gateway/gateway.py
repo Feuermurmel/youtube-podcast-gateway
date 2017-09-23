@@ -23,6 +23,7 @@ from . import util, youtube, config
 _http_listen_address_key = config.Key('http_listen_address', str, '')
 _http_listen_port_key = config.Key('http_listen_port', int, 8080)
 _max_episode_count_key = config.Key('max_episode_count', int)
+_canonical_base_url_key = config.Key('canonical_base_url', str)
 
 
 class _File:
@@ -195,6 +196,7 @@ class _Feed:
 class Gateway:
     def __init__(self, settings: config.Configuration):
         self.max_episode_count = settings.get(_max_episode_count_key)
+        self.canonical_base_url = settings.get(_canonical_base_url_key)
         self.service = youtube.YouTube.get_authenticated_instance(settings)
         self.file_factory = _FileFactory(self)
         self._request_counter = 0
@@ -285,14 +287,24 @@ class _RequestHandler(http.server.SimpleHTTPRequestHandler):
         self.log('Returned status {}.', code)
 
     def _get_base_url(self):
-        host_header = self.headers['Host']
+        base_url = self._gateway.canonical_base_url
 
-        if host_header:
-            return 'http://{}'.format(host_header)
-        else:
-            return 'http://{}:{}'.format(
-                env.local_address_best_guess(),
-                self._gateway.server.server_port)
+        if base_url is None:
+            address, port = self.connection.getsockname()
+            host_header = self.headers['Host']
+
+            if host_header is not None:
+                address = host_header
+
+            if port == 80:
+                netloc = address
+            else:
+                netloc = '{}:{}'.format(address, port)
+
+            base_url = urllib.parse.urlunsplit(
+                ('http', netloc, '/', None, None))
+
+        return base_url
 
     def _handle_feed_request(self, type, id, audio_only):
         feeds_by_type = {
