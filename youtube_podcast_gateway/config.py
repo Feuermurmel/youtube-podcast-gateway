@@ -21,7 +21,3 @@ class Configuration:
                 raise Exception('Error parsing value "{}" as type {} for configuration key {}.'.format(value_str, key.type.__name__, key.name))
         else:
             return key.default_value
-
-    @classmethod
-    def from_arguments(cls, argv):
-        return cls(dict(i.split('=', 1) for i in argv))
