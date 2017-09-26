@@ -79,7 +79,10 @@ class _File:
         stdout, stderr = process.communicate()
 
         if process.returncode:
-            message = stderr.decode().strip()
+            # We expect at least one error log message.
+            message = next(
+                i for i in stderr.decode().splitlines()
+                if i.startswith('ERROR: '))
 
             if message.startswith('ERROR: requested format not available'):
                 return None
