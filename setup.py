@@ -9,7 +9,8 @@ setuptools.setup(
         'google-api-python-client',
         'isodate',
         'pytz',
-        'youtube_dl'],
+        'youtube_dl',
+        'oauth2client'],
     entry_points=dict(
         console_scripts=[
             'youtube-podcast-gateway=youtube_podcast_gateway:entry_point']))
