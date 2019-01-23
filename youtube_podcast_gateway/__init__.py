@@ -17,6 +17,7 @@ def parse_args():
         dest='options',
         action='append',
         type=option_type,
+        default=[],
         help='Modify default settings. See readme.md for a list of available '
              'settings.')
 
