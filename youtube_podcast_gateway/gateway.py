@@ -335,7 +335,7 @@ class _RequestHandler(http.server.SimpleHTTPRequestHandler):
     def _handle_media_request(self, file: _File):
         range_header = self.headers.get('Range')
 
-        if range_header is not None:
+        if range_header is None:
             self.log('Request for video {}.', file.video_id)
         else:
             self.log('Request for range {} of video {}.', range_header, file.video_id)
