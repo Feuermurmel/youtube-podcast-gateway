@@ -1,5 +1,8 @@
 # YouTube Podcast Gateway
 
+| :exclamation: This project is not maintained anymore. I haven't been using it myself since 2018 and thus can't test issues or fixes myself. If you want to take over the project, I'll gladly transfer it to you. Hit me up by email! |
+|-|
+
 Transforms a YouTube playlist or a user's uploads into a Podcast.
 
 
